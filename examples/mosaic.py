@@ -68,6 +68,11 @@ def createMosaic(args):
         if (cap.isOpened):
             ## Read all the other frames
             ret, in_frame = cap.read()
+            # when we reach the end of the video (file) exit cleanly
+            if not ret:
+                keep_processing = False
+                continue
+
             showImageKeepRatio(windowNameLive, in_frame, 0.5)
 
             ## Frame Processsing
@@ -101,11 +106,6 @@ def createMosaic(args):
             showImageKeepRatio(windowNameMosaic, mosaic, 0.7)
 
         # continue to next frame (i.e. next loop iteration)
-
-        # when we reach the end of the video (file) exit cleanly
-        if not ret:
-            keep_processing = False
-            continue
 
         key = cv2.waitKey(10) & 0xFF
         if (key == ord('x')):
