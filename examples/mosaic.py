@@ -24,7 +24,8 @@ def createMosaic(args):
     if args.output:
         outputpath = Path(args.output)
     else:
-        outputpath = videopath.parent.joinpath("output_mosaic.png")
+        Path("./outputs").mkdir(parents=True, exist_ok=True)
+        outputpath = Path("./outputs").joinpath("output_mosaic.png")
 
     # Start time
     start = time.time()
@@ -113,6 +114,9 @@ def createMosaic(args):
             cv2.destroyWindow(windowNameMosaic)
             cv2.destroyWindow(windowNameLive)
 
+    cv2.destroyWindow(windowNameMosaic)
+    cv2.destroyWindow(windowNameLive)
+    cap.release()
     # writer.release()
     ## Save mosaic
     cv2.imwrite('Final Mosaic.jpg', mosaic)
@@ -121,7 +125,7 @@ def createMosaic(args):
     # Time elapsed
     seconds = end - start
     print("Time taken : {0} seconds".format(seconds))
-    cap.release()
+
 
 
 if __name__=="__main__":
