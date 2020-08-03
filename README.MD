@@ -26,7 +26,7 @@ to balance channels, intensity and contrast to obtain clearer pictures.
 1. Copy the examples/color-correction.py script into the same directory level (up a level) as the mosaicking package
 (alternatively, set up a configuration file with the working directory specified on the level containing the mosaicking package)
 2. Run
-    python color-correction.py .\images\corrections\underwater-fishes.png
+    python color-correction.py ./images/corrections/underwater-fishes.png
 3. A directory will be created in your current folder called "outputs", the three outputs from the color correction process will be saved there.
 Close the displayed graph (which is the same 3 + the original image)
 
@@ -45,7 +45,7 @@ a 60 degree roll.
 1. Copy the examples/euler-rotate.py script into the same directory level (up a level) as the mosaicking package
 (alternatively, set up a configuration file with the working directory specified on the level containing the mosaicking package)
 2. Run
-    python euler-rotate.py -y 45 -p 20 -r 60 -d .\images\corrections\underwater-fishes.png
+    python euler-rotate.py -y 45 -p 20 -r 60 -d ./images/corrections/underwater-fishes.png
 3. A directory will be created in your current folder called "outputs", the transformed version of underwater-fishes.png will appear there.
 
 **What does applying rotations of more than 90 degrees in pitch and roll do?**
@@ -61,7 +61,7 @@ new image, and the mosaic grows.
 1. Copy the examples/mosaic.py script into the same directory level (up a level) as the mosaicking package
 (alternatively, set up a configuration file with the working directory specified on the level containing the mosaicking package)
 2. Run
-    python mosaic.py .\images\mosaicking\Fishes.MOV
+    python mosaic.py ./images/mosaicking/Fishes.MOV
 3. A directory will be created in your current folder called "outputs", the output mosaic (and sub mosaics) will appear here. 
 
 Control of the camera is particularly important as the new image will become smaller and smaller with respect to the mosaic
