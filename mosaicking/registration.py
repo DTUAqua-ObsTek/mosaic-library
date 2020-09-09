@@ -57,30 +57,37 @@ def alignImages(im1: np.ndarray, im2: np.ndarray, detector: cv2.Feature2D, last_
     ## Find height and width of both frames
     h1, w1 = im1.shape[:2]
     h2, w2 = im2.shape[:2]
+
     ## Find the corners of frame 1 and frame 2
     corners1 = np.float32([[0, 0], [0, h1-1], [w1-1, h1-1], [w1-1, 0]]).reshape(-1, 1, 2)
     corners2 = np.float32([[0, 0], [0, h2-1], [w2-1, h2-1], [w2-1, 0]]).reshape(-1, 1, 2)
 
-    ## Warp the points of im2
+    ## Warp the corners of im2
     warpedCorners2 = cv2.perspectiveTransform(corners2, H)  # The transformation matrix
 
     # Consider the corner points of both mosaic and input image
     corners = np.concatenate((corners1, warpedCorners2), axis=0)
 
-    ## Find the min and max offset
-    [xmin, ymin] = np.int32(corners.min(axis=0).ravel() - 0.5)
-    [xmax, ymax] = np.int32(corners.max(axis=0).ravel() + 0.5)
+    # # Find the min and max offset for the bounding box
+    # [xmin, ymin] = np.int32(corners.min(axis=0).ravel() - 0.5)
+    # [xmax, ymax] = np.int32(corners.max(axis=0).ravel() + 0.5)
+    # # Calculate translation
+    # translation = np.float32(([1, 0, -xmin], [0, 1, -ymin], [0, 0, 1]))
+    bx, by, bwidth, bheight = cv2.boundingRect(corners)
+    translation = np.float32([[1, 0, -bx],
+                              [0, 1, -by],
+                              [0, 0, 1]])
 
-    ## Calculate translation
-    translation = np.float32(([1, 0, -xmin], [0, 1, -ymin], [0, 0, 1]))
-    ## Translate the mosaic frame to the , the translation and difference between offset
-    warpedResImg = cv2.warpPerspective(im1, translation, (xmax - xmin, ymax - ymin),
+    ## Translate img1 to locate within combined mosaic
+    warpedResImg = cv2.warpPerspective(im1, translation, (bwidth, bheight),
                                        flags=cv2.INTER_NEAREST + cv2.WARP_FILL_OUTLIERS)
     if len(good) >= 100:
-        ## Warping will be with the dot product of the translation and the homography matrix
-        fullTransformation = np.dot(translation, H)  # apply translation and rotation to im2 again
+        # Warping will be with the dot product of the translation and the homography matrix
+        fullTransformation = np.dot(translation, H)
+        # last_tf places img2 within the mosaic
         last_tf = fullTransformation
-        warpedImage2 = cv2.warpPerspective(im2, fullTransformation, (xmax - xmin, ymax - ymin),
+        # apply translation and rotation to im2
+        warpedImage2 = cv2.warpPerspective(im2, fullTransformation, (bwidth, bheight),
                                            flags=cv2.INTER_NEAREST + cv2.WARP_FILL_OUTLIERS)
     else:
         return False, im1, last_tf

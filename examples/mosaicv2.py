@@ -30,7 +30,8 @@ def createMosaic(args):
     # Start time
     start = time.time()
     keep_processing = True
-    detector = cv2.xfeatures2d.SIFT_create(500, 3)
+    #    count = 0
+    detector = cv2.xfeatures2d.SIFT_create(1000, 3)
 
     # define video capture object
     cap = cv2.VideoCapture(str(videopath))
@@ -43,7 +44,7 @@ def createMosaic(args):
     ret, in_frame = cap.read()
 
     # Resize
-    in_frame = preprocessing.const_ar_scale(in_frame, args.scale)
+    in_frame = preprocessing.const_ar_scale(in_frame, 0.6)
 
     # Fix lighting, colors, contrast here
     in_frame = preprocessing.fix_color(in_frame, 1.0)
@@ -51,7 +52,7 @@ def createMosaic(args):
     in_frame = preprocessing.fix_contrast(in_frame)
 
     # Apply static tf
-    in_frame = transformations.euler_affine_rotate(in_frame, np.array([args.yaw, args.pitch, args.roll]), args.degrees)
+    in_frame = transformations.ImageTransformer(in_frame).rotate_along_axis(args.pitch, args.roll, args.yaw, degrees=args.degrees)
 
     # Set mosaic to first frame
     mosaic = in_frame
@@ -64,7 +65,6 @@ def createMosaic(args):
     cv2.namedWindow(windowNameLive, cv2.WINDOW_NORMAL)
     cv2.namedWindow(windowNameMosaic, cv2.WINDOW_NORMAL)
     tfs = []
-    tf = None
     while (keep_processing):
         if (cap.isOpened):
             ## Read all the other frames
@@ -74,11 +74,11 @@ def createMosaic(args):
                 keep_processing = False
                 continue
 
-            showImageKeepRatio(windowNameLive, in_frame, args.scale)
+            showImageKeepRatio(windowNameLive, in_frame, 0.5)
 
             ## Frame Processsing
             # for the video
-            input_frame = preprocessing.const_ar_scale(in_frame, args.scale)
+            input_frame = preprocessing.const_ar_scale(in_frame, 0.6)
 
             # Fix lighting, colors, contrast here
             in_frame = preprocessing.fix_color(in_frame, 1.0)
@@ -86,12 +86,14 @@ def createMosaic(args):
             in_frame = preprocessing.fix_contrast(in_frame)
 
             # Apply static tf
-            in_frame = transformations.euler_affine_rotate(in_frame, np.array([args.yaw, args.pitch, args.roll]),
-                                                           args.degrees)
+            in_frame = transformations.ImageTransformer(in_frame).rotate_along_axis(args.pitch, args.roll, args.yaw,
+                                                                                    degrees=args.degrees)
+
+            # Define a local ROI
 
             ## Image Registration and Stitching
             try:
-                success, result, tf = registration.alignImages(mosaic, in_frame,  detector, tf)
+                success, result, tf = registration.alignImages(mosaic, in_frame,  detector)
             except Exception as e:
                 print("Something went wrong in align Images {}".format(e))
                 continue
@@ -104,7 +106,7 @@ def createMosaic(args):
                 io.imsave(outputpath.parent.joinpath("tmp_{0:03d}.png".format(len(tfs))), mosaic)
                 mosaic = in_frame
 
-            showImageKeepRatio(windowNameMosaic, mosaic, args.scale)
+            showImageKeepRatio(windowNameMosaic, mosaic, 0.7)
 
         # continue to next frame (i.e. next loop iteration)
 
@@ -136,7 +138,6 @@ if __name__=="__main__":
     parser.add_argument("-r", "--roll", nargs='?', default=0., type=float, help="Static roll angle to use.")
     parser.add_argument("-y", "--yaw", nargs='?', default=0., type=float, help="Static yaw angle to use.")
     parser.add_argument("-d", "--degrees", action="store_true")
-    parser.add_argument("-s", "--scale", nargs='?', default=1.0, type=float, help="Specify scaling to change image size.")
     parser.add_argument("output", nargs="?", default=False)
     args = parser.parse_args()
 
