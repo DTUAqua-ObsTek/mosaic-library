@@ -145,3 +145,4 @@ venv/
 
 # Output dir
 outputs
+tmp
