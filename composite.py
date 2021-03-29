@@ -76,9 +76,9 @@ if __name__=="__main__":
                                  (height, width*2))
 
     # Use the Oriented - BRIEF detector because it is open source :)
-    orb = cv2.ORB_create(nfeatures=500)
+    detector = cv2.ORB_create(nfeatures=500)
     # BUT! SIFT is much better!
-    orb = cv2.SIFT_create(nfeatures=500)
+    detector = cv2.SIFT_create(nfeatures=500)
 
     # FLANN parameters
     FLANN_INDEX_KDTREE = 1
@@ -114,13 +114,13 @@ if __name__=="__main__":
 
         sys.stdout.write("Processing frame: {}\n".format(formatspec.format(int(reader.get(cv2.CAP_PROP_POS_FRAMES)))))
         # Preprocess the image
-        # img = fix_color(img)
-        # img = fix_light(img)
+        img = fix_color(img)
+        img = fix_light(img)
         img = fix_contrast(img)
 
         # Detect keypoints
-        kp_tile, des_tile = get_features(tile_img, orb, mask=last_mask)
-        kp, des = get_features(img, orb)
+        kp_tile, des_tile = get_features(tile_img, detector, mask=last_mask)
+        kp, des = get_features(img, detector)
 
         if des.shape[0] < MIN_MATCH_COUNT:
             sys.stderr.write("Not enough features.\n")
@@ -223,15 +223,6 @@ if __name__=="__main__":
             if args.visualize:
                 cv2.imshow("OUTPUT", map_out)
 
-        # show tile
-        # cv2.imshow(str(video_path), (first_mask>0).astype(np.uint8)*255)
-        # cv2.imshow(str(video_path), (last_mask > 0).astype(np.uint8) * 255)
-        # After image processing is done
-        # img = cv2.putText(img, "{:.2f}".format(reader.get(cv2.CAP_PROP_POS_MSEC)/1000.0),
-        #                  (0, height-5), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255))
-        # img = cv2.putText(img, "{}".format(formatspec.format(int(reader.get(cv2.CAP_PROP_POS_FRAMES)+1))),
-        #                  (0, height-30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255))
-        # cv2.imshow(str(video_path), img)
         if args.visualize:
             cv2.imshow(str(video_path), tile_img)
             key = cv2.waitKey(10)
