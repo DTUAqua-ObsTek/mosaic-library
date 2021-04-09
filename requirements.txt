@@ -7,3 +7,4 @@ scikit-image
 matplotlib
 PyQt5
 keyboard
+pandas
