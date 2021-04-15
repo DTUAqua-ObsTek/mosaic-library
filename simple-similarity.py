@@ -70,7 +70,7 @@ def get_rotation_homography(img: np.ndarray, rotation: np.ndarray):
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("video", type=str, help="Path to video file.")
-    # parser.add_argument("mappings_out", type=str, help="Path to ")
+    parser.add_argument("--output_directory", type=str, help="Path to directory where output mosaics are to be saved. Default is invokation path.", default=".")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--start_time", type=float, help="Time (secs) to start from.")
     group.add_argument("--start_frame", type=int, help="Frame number to start from.")
@@ -90,11 +90,13 @@ if __name__=="__main__":
     parser.add_argument("--scale_input", type=float, default=0.0, help="Scale the input image with constant aspect ratio.")
     parser.add_argument("--alpha", type=float, default=0.5, help="Alpha blending scalar for merging new frames into mosaic.")
     parser.add_argument("--show_rotation", action="store_true", help="Flag to display the rotation compensation using rotation data.")
-
+    parser.add_argument("--show_mosaic", action="store_true", help="Flag to display the mosaic output.")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
     assert video_path.exists(), "File not found: {}".format(str(video_path))
+    output_path = Path(args.output_directory).resolve()
+    output_path.mkdir(parents=True, exist_ok=True)
 
     if args.orientation_file is not None:
         ori_path = Path(args.orientation_file).resolve()
@@ -111,7 +113,8 @@ if __name__=="__main__":
     height = int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     n_frames = int(reader.get(cv2.CAP_PROP_FRAME_COUNT))
     formatspec = "{:0"+"{}d".format(len(str(n_frames)))+"}"
-    cv2.namedWindow(str(video_path), cv2.WINDOW_AUTOSIZE)
+    if args.show_mosaic:
+        cv2.namedWindow(str(video_path), cv2.WINDOW_AUTOSIZE)
     if args.show_rotation:
         cv2.namedWindow("ROTATION COMPENSATION", cv2.WINDOW_AUTOSIZE)
 
@@ -183,7 +186,7 @@ if __name__=="__main__":
                     R = R.as_euler("xyz")
                     R = R[[0,1,2]] * np.array([1, 1, 1]) + np.array([0, 0, 0])
                     R = Rotation.from_euler("xyz",R)
-                    img, image_mask, kp_prev = apply_rotation(img, R.as_matrix().T, kp_prev)
+                    img, image_mask, kp_prev = apply_rotation(img, R.as_matrix(), kp_prev)
                     if args.show_rotation:
                         cv2.imshow("ROTATION COMPENSATION", img)
                     mosaic_mask = image_mask.copy()
@@ -202,7 +205,8 @@ if __name__=="__main__":
                     sys.stderr.write("Not Enough Features, Skipping Frame.\n")
                     first = True
                     sys.stdout.write("Cropping tile.\n")
-                    cv2.imwrite("tile_{:03d}.png".format(tile_counter), mosaic_img)
+                    fpath = output_path.joinpath("tile_{:03d}.png".format(tile_counter))
+                    cv2.imwrite(str(fpath), mosaic_img)
                     tile_counter = tile_counter + 1
                     continue
                 if args.orientation_file is not None:
@@ -211,7 +215,7 @@ if __name__=="__main__":
                     R = R.as_euler("xyz")
                     R = R[[0,1,2]] * np.array([1, 1, 1]) + np.array([0, 0, 0])
                     R = Rotation.from_euler("xyz", R)
-                    img, image_mask, kp = apply_rotation(img, R.as_matrix().T, kp)
+                    img, image_mask, kp = apply_rotation(img, R.as_matrix(), kp)
                     if args.show_rotation:
                         cv2.imshow("ROTATION COMPENSATION", img)
 
@@ -272,7 +276,8 @@ if __name__=="__main__":
                 if xmax-xmin > args.max_mosaic_size or ymax-ymin > args.max_mosaic_size:
                     sys.stdout.write("Cropping tile.\n")
                     first = True
-                    cv2.imwrite("tile_{:03d}.png".format(tile_counter), mosaic_img)
+                    fpath = output_path.joinpath("tile_{:03d}.png".format(tile_counter))
+                    cv2.imwrite(str(fpath), mosaic_img)
                     tile_counter = tile_counter + 1
                     continue
 
@@ -301,7 +306,8 @@ if __name__=="__main__":
             mosaic_mask = cv2.bitwise_or(mosaic_mask_, warped_mask)
 
             # Display the mosaic
-            cv2.imshow(str(video_path), mosaic_img)
+            if args.show_mosaic:
+                cv2.imshow(str(video_path), mosaic_img)
 
             prev_img = img.copy()  # Update the previous frame
             kp_prev = kp  # Update the previous keypoints
@@ -322,7 +328,10 @@ if __name__=="__main__":
         cv2.destroyWindow(str(video_path))
         reader.release()
         raise err
-    cv2.destroyWindow(str(video_path))
+    fpath = output_path.joinpath("tile_{:03d}.png".format(tile_counter))
+    cv2.imwrite(str(fpath), mosaic_img)
+    if args.show_mosaic:
+        cv2.destroyWindow(str(video_path))
     if args.show_rotation:
         cv2.destroyWindow("ROTATION COMPENSATION")
     reader.release()

@@ -8,3 +8,4 @@ matplotlib
 PyQt5
 keyboard
 pandas
+requests
