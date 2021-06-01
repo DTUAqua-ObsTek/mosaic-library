@@ -1,18 +1,16 @@
-import matplotlib.pyplot as plt
-from skimage import io
 import keyboard
 import numpy as np
 from mosaicking.transformations import ImageTransformer
+import cv2
 
 
-fig = plt.figure()
-img = io.imread("../images/corrections/underwater-fishes.png")
+img = cv2.imread("../images/corrections/underwater-fishes.png")
 width,height,channels = img.shape
 tformer = ImageTransformer(img)
 warped = img
-ax = plt.imshow(warped)
-fig.canvas.draw()
-
+cv2.namedWindow("W/S to tilt around X axis. A/D to tilt around Y axis. Q/E to tilt around Z axis.", cv2.WINDOW_NORMAL)
+cv2.imshow("W/S to tilt around X axis. A/D to tilt around Y axis. Q/E to tilt around Z axis.", warped)
+cv2.waitKey(1)
 euler = np.zeros((3,),dtype="float32")
 scaler = 1.0
 while True:
@@ -42,6 +40,6 @@ while True:
         print(key.name + key.event_type)
 
     warped = tformer.rotate_along_axis(euler[1], euler[2], euler[0], degrees=True)
-
-    ax.set_data(warped)
-    fig.canvas.draw()
+    cv2.imshow("W/S to tilt around X axis. A/D to tilt around Y axis. Q/E to tilt around Z axis.", warped)
+    cv2.waitKey(1)
+cv2.destroyAllWindows()

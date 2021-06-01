@@ -1,11 +1,1 @@
-imutils
-opencv-python
-opencv-contrib-python
-numpy
-scipy
-scikit-image
-matplotlib
-PyQt5
-keyboard
-pandas
-requests
+.
