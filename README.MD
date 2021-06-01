@@ -59,18 +59,19 @@ to balance channels, intensity and contrast to obtain clearer pictures.
 Applying geometric transformations to images is relatively easy. A rotation matrix, R, that specifies the roll, pitch, and yaw
 angles can rotate an about its principle axes in sequence to appear as if looked at from another position. This is useful
 for lining images up so that they match closely with each other (this is called image registration in the literature). Additionally it is useful
-to correct for perspective.
+to correct for perspective. If we have some idea of where the camera is relative to the image, then we can warp the image
+by rotating it about the approximate camera position.
 
-This example reads the users keyboard and applies a transformation to the image.
+This example investigates and applies a transformation to the image.
 
 1. In a terminal, navigate to $WORKSPACE/examples
-2. Run `python3 keyboard-perspective.py ../images/homography/train.jpg`
+2. Run `python3 perspective-test.py ../images/homography/train.jpg`
 
 **Why do the rails appear to vanish to a single point?**
 
 **What are we doing with the camera when we shift the perspective like this?**
 
-**What does applying rotations of more than 90 degrees in pitch and roll do?**
+**Are we able to get the tracks to appear parallel (as they are in reality)?**
 
 
 ## Mosaicking ##

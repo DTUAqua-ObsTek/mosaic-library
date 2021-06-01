@@ -81,17 +81,15 @@ def euler_perspective_rotate(img: np.ndarray, euler: np.array, degrees: bool=Fal
 ## Bird View method- get a top down view of the frames
 def bird_view(image, pitch=45):
     ## Crop image
-    image = image[0:(image.shape[0] - 100), 0:(image.shape[1] - 100)]
 
     IMAGE_H = image.shape[0]
     IMAGE_W = image.shape[1]
-    #    first_frame_cro = first_frame[100:(first_frame.shape[0]-100),100:(first_frame.shape[1]-100)]
 
     # Assume that focus length is equal half image width
+    FOCUS = IMAGE_W / 2  ## Focus needs to stay the same height of the seabed-camera
 
     # Translation of images on the black canvases
-    translation = np.float32(([1, 0, -1 * IMAGE_W / 2], [0, 1, -1 * IMAGE_H], [0, 0, 1]))
-    FOCUS = IMAGE_W / 2  ## Focus needs to stay the same height of the seabed-camera
+    translation = np.float32(([1, 0,  IMAGE_W], [0, 1, IMAGE_H], [0, 0, 1]))
     warped_img = None
     pRad = pitch * np.pi / 180
     sinPt = np.sin(pRad)
@@ -116,8 +114,6 @@ def bird_view(image, pitch=45):
     warped_img = cv2.warpPerspective(image, fullTransformation, (2 * IMAGE_W, 2 * IMAGE_H),
                                      flags=cv2.INTER_NEAREST + cv2.WARP_FILL_OUTLIERS)  # Image warping
 
-    ## Numpy slicing of the original Image and the warped Image
-    #    warped_img = warped_img[IMAGE_H /2:(warped_img.shape[0]-IMAGE_H /2),IMAGE_W/2:(warped_img.shape[1]-IMAGE_W/2)]
     return warped_img
 
 
