@@ -141,11 +141,11 @@ if __name__=="__main__":
     n_frames = int(reader.get(cv2.CAP_PROP_FRAME_COUNT))
     formatspec = "{:0"+"{}d".format(len(str(n_frames)))+"}"
     if args.show_mosaic:
-        cv2.namedWindow(str(video_path), cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow(str(video_path), cv2.WINDOW_NORMAL)
     if args.show_rotation:
-        cv2.namedWindow("ROTATION COMPENSATION", cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow("ROTATION COMPENSATION", cv2.WINDOW_NORMAL)
     if args.show_preprocessing:
-        cv2.namedWindow("PREPROCESSING RESULT", cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow("PREPROCESSING RESULT", cv2.WINDOW_NORMAL)
 
     detector = cv2.ORB_create(nfeatures=500)  # ORB detector is pretty good and is CC licensed
     # detector = cv2.SIFT_create(nfeatures=500)  # SIFT detector performs better but is patented by David Lowe
