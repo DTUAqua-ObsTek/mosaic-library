@@ -61,14 +61,14 @@ def calculate_homography(K: np.ndarray, width: int, height: int, euler_x: float,
 
 def apply_rotation(img: np.ndarray, K: np.ndarray, rotation: np.ndarray, keypoints: list, mask: np.ndarray = None, gradient_clip: float = 0.0):
     eulers = Rotation.from_dcm(rotation).as_euler("xyz")
-    H, bounds = calculate_homography(K, img.shape[1], img.shape[0], eulers[0], eulers[1], eulers[2], gradient_clip)
-    out = cv2.warpPerspective(img, H, bounds)
+    H, bbox, xbounds, ybounds = calculate_homography(K, img.shape[1], img.shape[0], eulers[0], eulers[1], eulers[2], gradient_clip)
+    out = cv2.warpPerspective(img, H, bbox)
     if mask is None:
         mask = np.ones(img.shape[:2], dtype='uint8')
-    mask = cv2.warpPerspective(mask, H, bounds)
+    mask = cv2.warpPerspective(mask, H, bbox)
     pts = [k.pt for k in keypoints]
     pts = H @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
-    pts = pts[:2, :].T
+    pts = (pts[:2, :]/pts[-1,:]).T
     for k, pt in zip(keypoints, pts):
         k.pt = tuple(pt)
     return out, mask, keypoints
