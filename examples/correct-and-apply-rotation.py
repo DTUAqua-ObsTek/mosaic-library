@@ -50,6 +50,38 @@ if __name__=="__main__":
         K[1, 2] = float(height) / 2
     print("K: {}".format(repr(K)))
 
+    if K.shape[1] < 4:
+        K = np.concatenate((K, np.zeros((3, 1))), axis=1)
+    Kinv = np.zeros((4, 3))
+    Kinv[:3, :3] = np.linalg.inv(K[:3, :3]) * (K[0, 0] * K[1, 1])
+    Kinv[-1, :] = [0, 0, 1]
+    R = euler_rotation(args.xrotation, args.yrotation, args.zrotation)
+    # Translation matrix
+    T = np.array([[1, 0, 0, 0],
+                  [0, 1, 0, 0],
+                  [0, 0, 1, 0],
+                  [0, 0, 0, 1]])
+    # Overall homography matrix
+    H = np.linalg.multi_dot([K, R, T, Kinv])
+    # Warp the corners
+    xgrid = np.arange(0, width - 1)
+    ygrid = np.arange(0, height - 1)
+    xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
+    grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
+    warp_grid = H @ grid
+    pts = warp_grid[:2, :] / warp_grid[-1, :]
+    if args.gradientclip > 0:
+        grad = np.gradient(pts, axis=1)
+        idx = np.sqrt((grad ** 2).sum(axis=0)) < args.gradientclip
+        pts = pts[:, idx]
+    # Round to pixel centers
+    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
+    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
+    T1 = np.array([[1, 0, -xmin],
+                   [0, 1, -ymin],
+                   [0, 0, 1]])
+    H = np.linalg.multi_dot([T1, K, R, T, Kinv])
+
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(str(video_out), fourcc, fps, (xmax-xmin, ymax-ymin))

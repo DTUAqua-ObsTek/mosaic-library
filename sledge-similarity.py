@@ -221,16 +221,6 @@ if __name__=="__main__":
                                 [1, 1, 1, 1]], float)
 
             warp_dst = A @ src_crn
-            # # Warp the corners
-            # xgrid = np.arange(0, width - 1)
-            # ygrid = np.arange(0, height - 1)
-            # xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
-            # grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
-            # warp_dst = A @ grid
-            # if args.gradientclip > 0:
-            #     grad = np.gradient(warp_dst, axis=1)
-            #     idx = np.sqrt((grad ** 2).sum(axis=0)) < args.gradientclip
-            #     warp_dst = warp_dst[:, idx]
 
             # Get the corners of the mosaic image in homogeneous coords (x,y,w=1)
             dst_crn = np.array([[0, mosaic_img.shape[1], mosaic_img.shape[1], 0],
