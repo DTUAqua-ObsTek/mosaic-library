@@ -1,0 +1,29 @@
+import cv2
+import os
+import pandas as pd
+
+
+def get_starting_pos(cap: cv2.VideoCapture, args):
+    """Set a VideoCapture object to a position (either in seconds or the frame #)"""
+    if args.start_time:
+        cap.set(cv2.CAP_PROP_POS_MSEC, args.start_time * 1000.0)
+    elif args.start_frame:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, args.start_frame - 1)
+    return cap
+
+
+def evaluate_stopping(cap: cv2.VideoCapture, args):
+    """Return true if stopping conditions met."""
+    if args.finish_time:
+        return cap.get(cv2.CAP_PROP_POS_MSEC) > args.finish_time*1000.0
+    elif args.finish_frame:
+        return cap.get(cv2.CAP_PROP_POS_FRAMES) > args.finish_frame-1
+    return cap.get(cv2.CAP_PROP_FRAME_COUNT)-1 <= cap.get(cv2.CAP_PROP_POS_FRAMES)
+
+
+def load_orientations(path: os.PathLike, args):
+    """Given a path containing orientations, retrieve the orientations corresponding to a time offset between video and orientation data."""
+    time_offset = args.time_offset if args.time_offset else args.sync_points[1] - args.sync_points[0]
+    df = pd.read_csv(str(path), index_col="timestamp")
+    df.index = df.index - time_offset
+    return df[~df.duplicated()]

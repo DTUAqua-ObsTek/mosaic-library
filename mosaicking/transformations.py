@@ -4,29 +4,125 @@ from scipy.spatial.transform import Rotation
 import matplotlib.pyplot as plt
 
 
+def calculate_friendly_affine(A: np.ndarray, width: int, height: int, gradient_clip: float):
+    # Warp the corners of the image
+    xgrid = np.arange(0, width - 1)
+    ygrid = np.arange(0, height - 1)
+    xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
+    grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
+    warp_grid = A @ grid
+    pts = warp_grid[:2, :] / warp_grid[-1, :]
+    if gradient_clip > 0:
+        grad = np.gradient(pts, axis=1)
+        idx = np.sqrt((grad ** 2).sum(axis=0)) < gradient_clip
+        pts = pts[:, idx]
+    # Round to pixel centers
+    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
+    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
+    T1 = np.array([[1, 0, -xmin],
+                   [0, 1, -ymin]])
+    A = np.linalg.multi_dot([T1, A])
+
+
+def calculate_homography(K: np.ndarray, width: int, height: int, euler_x: float, euler_y: float, euler_z: float, gradient_clip: float=0.0):
+    if K.shape[1] < 4:
+        K = np.concatenate((K, np.zeros((3, 1))), axis=1)
+    Kinv = np.zeros((4, 3))
+    Kinv[:3, :3] = np.linalg.inv(K[:3, :3]) * (K[0, 0] * K[1, 1])
+    Kinv[-1, :] = [0, 0, 1]
+    R = euler_rotation(euler_x, euler_y, euler_z)
+    # Translation matrix
+    T = np.array([[1, 0, 0, 0],
+                  [0, 1, 0, 0],
+                  [0, 0, 1, 0],
+                  [0, 0, 0, 1]])
+    # Overall homography matrix
+    H = np.linalg.multi_dot([K, R, T, Kinv])
+    # Warp the corners
+    xgrid = np.arange(0, width - 1)
+    ygrid = np.arange(0, height - 1)
+    xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
+    grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
+    warp_grid = H @ grid
+    pts = warp_grid[:2, :] / warp_grid[-1, :]
+    if gradient_clip > 0:
+        grad = np.gradient(pts, axis=1)
+        idx = np.sqrt((grad ** 2).sum(axis=0)) < gradient_clip
+        pts = pts[:, idx]
+    # Round to pixel centers
+    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
+    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
+    T1 = np.array([[1, 0, -xmin],
+                   [0, 1, -ymin],
+                   [0, 0, 1]])
+    H = np.linalg.multi_dot([T1, K, R, T, Kinv])
+    return H, (xmax - xmin, ymax - ymin), (xmin, xmax), (ymin, ymax)
+
+
+def apply_rotation(img: np.ndarray, K: np.ndarray, rotation: np.ndarray, keypoints: list, mask: np.ndarray = None, gradient_clip: float = 0.0):
+    eulers = Rotation.from_dcm(rotation).as_euler("xyz")
+    H, bounds = calculate_homography(K, img.shape[1], img.shape[0], eulers[0], eulers[1], eulers[2], gradient_clip)
+    out = cv2.warpPerspective(img, H, bounds)
+    if mask is None:
+        mask = np.ones(img.shape[:2], dtype='uint8')
+    mask = cv2.warpPerspective(mask, H, bounds)
+    pts = [k.pt for k in keypoints]
+    pts = H @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
+    pts = pts[:2, :].T
+    for k, pt in zip(keypoints, pts):
+        k.pt = tuple(pt)
+    return out, mask, keypoints
+
+
+def scale_img(img: np.ndarray, keypoints: list, scale: float):
+    if scale < 1:
+        img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    else:
+        img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    S = np.eye(3, dtype=float)
+    S[0,0] = scale
+    S[1,1] = scale
+    pts = [k.pt for k in keypoints]
+    pts = S @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
+    pts = pts[:2, :].T
+    for k, pt in zip(keypoints, pts):
+        k.pt = tuple(pt)
+    return img, keypoints
+
+
 ## euler rotation methods
 # Matrix for Yaw-rotation about the Z-axis
-def R_z(phi):
-    R = np.array([[np.cos(phi),   -np.sin(phi), 0],
-         [np.sin(phi),   np.cos(phi),   0],
-         [0,  0, 1]])
+def R_z(psi, degrees=False):
+    psi = psi * np.pi / 180 if degrees else psi
+    R = np.array([[np.cos(psi), -np.sin(psi), 0, 0],
+                   [np.sin(psi), np.cos(psi), 0, 0],
+                   [0, 0, 1, 0],
+                   [0, 0, 0, 1]])
     return R
 
 
 # Matrix for Pitch-rotation about the Y-axis
-def R_y(theta):
-    R = np.array([[np.cos(theta), 0, np.sin(theta)],
-         [0, 1, 0,],
-         [-np.sin(theta), 0, np.cos(theta)]])
+def R_y(theta, degrees=False):
+    theta = theta * np.pi / 180 if degrees else theta
+    R = np.array([[np.cos(theta), 0, np.sin(theta), 0],
+                   [0, 1, 0, 0],
+                   [-np.sin(theta), 0, np.cos(theta), 0],
+                   [0, 0, 0, 1]])
     return R
 
 
 # Matrix for Roll-rotation about the X-axis
-def R_x(phi):
-    R = np.array([[1,  0,           0],
-         [0,  np.cos(phi),   -np.sin(phi)],
-         [0,  np.sin(phi),   np.cos(phi)]])
+def R_x(phi, degrees=False):
+    phi = phi*np.pi/180 if degrees else phi
+    R = np.array([[1, 0, 0, 0],
+                   [0, np.cos(phi), -np.sin(phi), 0],
+                   [0, np.sin(phi), np.cos(phi), 0],
+                   [0, 0, 0, 1]])
     return R
+
+
+def euler_rotation(phi, theta, psi, degrees=False):
+    return np.linalg.multi_dot([R_x(phi, degrees), R_y(theta, degrees), R_z(psi, degrees)])
 
 
 def euler_affine_rotate(img: np.ndarray, euler: np.array, degrees: bool=False):

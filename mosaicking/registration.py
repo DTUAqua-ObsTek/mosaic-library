@@ -5,6 +5,13 @@ from skimage import util
 import copy
 
 
+def get_features(img: np.ndarray, fdet: cv2.Feature2D, mask=None):
+    """Given a feature detector, obtain the features found in the image."""
+    if img.ndim > 2:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    return fdet.detectAndCompute(img, mask)
+
+
 def alignImages(im1: np.ndarray, im2: np.ndarray, detector: cv2.Feature2D, last_tf=None):
     """im1: source image (to be registered onto im2)
     img2: destination image

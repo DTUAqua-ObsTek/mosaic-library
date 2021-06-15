@@ -80,7 +80,7 @@ if __name__ == '__main__':
 
         # K inverse
         Kinv = np.zeros((4,3))
-        Kinv[:3,:3] = np.linalg.inv(K[:3,:3])*f
+        Kinv[:3,:3] = np.linalg.inv(K[:3,:3]) * f
         Kinv[-1,:] = [0, 0, 1]
 
         # Rotation matrices around the X,Y,Z axis
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         H = np.linalg.multi_dot([K, R, T, Kinv])
 
         # Apply matrix transformation
-        cv2.warpPerspective(src, H, (w, h), dst, cv2.INTER_NEAREST, cv2.BORDER_CONSTANT, 0)
+        cv2.warpPerspective(src, H, (w, h), dst, cv2.INTER_CUBIC)
 
         # Show the image
         cv2.imshow(wndname2, dst)

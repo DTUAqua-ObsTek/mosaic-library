@@ -3,91 +3,12 @@ import argparse
 from pathlib import Path
 import sys
 import numpy as np
-import pandas as pd
-import os
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Rotation
 from mosaicking.preprocessing import *
-
-
-def load_orientations(path: os.PathLike, args):
-    """Given a path containing orientations, retrieve the orientations corresponding to a time offset between video and orientation data."""
-    time_offset = args.time_offset if args.time_offset else args.sync_points[1] - args.sync_points[0]
-    df = pd.read_csv(str(path), index_col="timestamp")
-    df.index = df.index - time_offset
-    return df[~df.duplicated()]
-
-
-def get_features(img: np.ndarray, fdet: cv2.Feature2D, mask=None):
-    """Given a feature detector, obtain the features found in the image."""
-    if img.ndim > 2:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    return fdet.detectAndCompute(img, mask)
-
-
-def get_starting_pos(cap: cv2.VideoCapture, args):
-    """Set a VideoCapture object to a position (either in seconds or the frame #)"""
-    if args.start_time:
-        cap.set(cv2.CAP_PROP_POS_MSEC, args.start_time * 1000.0)
-    elif args.start_frame:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, args.start_frame - 1)
-    return cap
-
-
-def evaluate_stopping(cap: cv2.VideoCapture, args):
-    """Return true if stopping conditions met."""
-    if args.finish_time:
-        return cap.get(cv2.CAP_PROP_POS_MSEC) > args.finish_time*1000.0
-    elif args.finish_frame:
-        return cap.get(cv2.CAP_PROP_POS_FRAMES) > args.finish_frame-1
-    return cap.get(cv2.CAP_PROP_FRAME_COUNT)-1 <= cap.get(cv2.CAP_PROP_POS_FRAMES)
-
-
-def apply_rotation(img: np.ndarray, rotation: np.ndarray, keypoints: list, scale_factor: float = None):
-    """Apply a 3D rotation to an image and keypoints, treating them as if on a plane."""
-    H, bounds = get_rotation_homography(img, rotation.T)
-    out = cv2.warpPerspective(img, H, bounds)
-    mask = cv2.warpPerspective(np.ones(img.shape[:2], dtype='uint8'), H, bounds)
-    pts = [k.pt for k in keypoints]
-    pts = H @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
-    pts = pts[:2, :].T
-    for k, pt in zip(keypoints, pts):
-        k.pt = tuple(pt)
-    return out, mask, keypoints
-
-
-def get_rotation_homography(img: np.ndarray, rotation: np.ndarray):
-    """Given a rotation, obtain the homography and the new bounds of the rotated image."""
-    # Acquire the four corners of the image
-    X = np.array([[0, 0, img.shape[1] / 2],
-                  [img.shape[1], 0, img.shape[1] / 2],
-                  [img.shape[1], img.shape[0], img.shape[1] / 2],
-                  [0, img.shape[0], img.shape[1] / 2]], dtype="float32").T
-    X1 = rotation @ X  # Rotate the coordinates
-    H, _ = cv2.findHomography(X[:2, :].T, X1[:2, :].T, cv2.RANSAC)  # Calculate the homography of the transformation
-    # Calculate the new bounds
-    xmin, ymin, _ = np.int32(X1.min(axis=1) - 0.5)
-    xmax, ymax, _ = np.int32(X1.max(axis=1) + 0.5)
-    # Apply a translation homography
-    t = [-xmin, -ymin]
-    Ht = np.array([[1, 0, t[0]], [0, 1, t[1]], [0, 0, 1]])  # translation homography
-    return Ht.dot(H), (xmax - xmin, ymax - ymin)
-
-
-def scale_img(img: np.ndarray, keypoints: list, scale: float):
-    if scale < 1:
-        img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-    else:
-        img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-    S = np.eye(3, dtype=float)
-    S[0,0] = scale
-    S[1,1] = scale
-    pts = [k.pt for k in keypoints]
-    pts = S @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
-    pts = pts[:2, :].T
-    for k, pt in zip(keypoints, pts):
-        k.pt = tuple(pt)
-    return img, keypoints
+from mosaicking.utils import *
+from mosaicking.transformations import *
+from mosaicking.registration import *
 
 
 if __name__=="__main__":
@@ -118,6 +39,14 @@ if __name__=="__main__":
     parser.add_argument("--fix_color", action="store_true", help="Flag to preprocess image for color balance.")
     parser.add_argument("--fix_contrast", action="store_true", help="Flag to preprocess image for contrast equalization.")
     parser.add_argument("--fix_light", action="store_true", help="Flag to preprocess image for lighting equalization.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-c", "--calibration", type=str, default=None, help="Path to calibration file.")
+    group.add_argument("-k", "--intrinsic", nargs=9, type=float, default=None, help="Space delimited list of intrinsic matrix terms, Read as K[0,0],K[1,0],K[2,0],K[1,0],K[1,1],K[1,2],K[2,0],K[2,1],K[2,2]")
+    parser.add_argument("-d", "--distortion", nargs=4, type=float, default=None, help="Space delimited list of distortion coefficients, Read as K1, K2, p1, p2")
+    parser.add_argument("-x", "--xrotation", type=float, default=0, help="Rotation around image plane's x axis (radians).")
+    parser.add_argument("-y", "--yrotation", type=float, default=0, help="Rotation around image plane's y axis (radians).")
+    parser.add_argument("-z", "--zrotation", type=float, default=0, help="Rotation around image plane's z axis (radians).")
+    parser.add_argument("-g", "--gradientclip", type=float, default=0, help="Clip the gradient of severely distorted image.")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -148,7 +77,6 @@ if __name__=="__main__":
         cv2.namedWindow("PREPROCESSING RESULT", cv2.WINDOW_NORMAL)
 
     detector = cv2.ORB_create(nfeatures=500)  # ORB detector is pretty good and is CC licensed
-    # detector = cv2.SIFT_create(nfeatures=500)  # SIFT detector performs better but is patented by David Lowe
 
     # FLANN parameters
     FLANN_INDEX_KDTREE = 1
@@ -156,27 +84,26 @@ if __name__=="__main__":
     search_params = dict(checks=50)  # or pass empty dictionary
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    # Camera Lens distortion coefficients (guesstimated)
+    # Camera Intrinsic Matrix
+    if args.intrinsic is not None:
+        K = np.array(args.intrinsic).reshape((3,3)).T
+    elif args.calibration is not None:
+        K = np.eye(3)
+        K[0,2] = float(width)/2
+        K[1,2] = float(height)/2
+    else:
+        K = np.eye(3)
+        K[0, 2] = float(width) / 2
+        K[1, 2] = float(height) / 2
+    print("K: {}".format(repr(K)))
+
+    # Camera Lens distortion coefficients
     distCoeff = np.zeros((4, 1), np.float64)
-    k1 = -1.0e-5  # negative to remove barrel distortion
-    k2 = 0
-    p1 = 0.0
-    p2 = 0.0
-    distCoeff[0, 0] = k1
-    distCoeff[1, 0] = k2
-    distCoeff[2, 0] = p1
-    distCoeff[3, 0] = p2
-
-    # Camera Intrinsic Matrix (also guesstimated)
-    # assume unit matrix for camera
-    cam = np.eye(3, dtype=np.float32)
-    cam[0, 2] = width / 2.0  # define center x
-    cam[1, 2] = height / 2.0  # define center y
-    cam[0, 0] = 10  #715.2699  # define focal length x
-    cam[1, 1] = 10  #711.5281  # define focal length y
-    # cam[2, 0] = 575.6995
-    # cam[2, 1] = 366.3466
-
+    if args.distortion is not None:
+        distCoeff[0, 0] = args.distortion[0]
+        distCoeff[1, 0] = args.distortion[1]
+        distCoeff[2, 0] = args.distortion[2]
+        distCoeff[3, 0] = args.distortion[3]
 
     # BEGIN MAIN LOOP #
     first = True
@@ -196,7 +123,7 @@ if __name__=="__main__":
                 continue
 
             # Preprocess the image
-            img = cv2.undistort(img, cam, distCoeff)
+            img = cv2.undistort(img, K, distCoeff)
             img = fix_color(img) if args.fix_color else img
             img = fix_contrast(img) if args.fix_contrast else img
             img = fix_light(img) if args.fix_light else img
@@ -217,15 +144,15 @@ if __name__=="__main__":
                     lookup_time = reader.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
                     R = Rotation.from_quat(quat_lut(lookup_time))
                     R = R.as_euler("xyz")
-                    R = R[[0,1,2]] * np.array([1, 1, 1]) + np.array([0, 0, 0])
                     R = Rotation.from_euler("xyz",R)
-                    img, image_mask, kp_prev = apply_rotation(img, R.as_matrix(), kp_prev)
+                    img, image_mask, kp_prev = apply_rotation(img, K, R.as_matrix(), kp_prev, gradient_clip=args.gradientclip)
                     if args.show_rotation:
                         cv2.imshow("ROTATION COMPENSATION", img)
                     mosaic_mask = image_mask.copy()
                 else:
-                    image_mask = np.ones(img.shape[:2], np.uint8)
-                    mosaic_mask = np.ones(img.shape[:2], np.uint8)
+                    R = Rotation.from_euler("xyz", [args.xrotation, args.yrotation, args.zrotation])
+                    img, image_mask, kp_prev = apply_rotation(img, K, R.as_matrix(), kp_prev, gradient_clip=args.gradientclip)
+                    mosaic_mask = image_mask.copy()
                 mosaic_img = img.copy()  # initialize the mosaic
                 prev_img = img.copy()  # store the image as previous
                 first = False
@@ -250,7 +177,12 @@ if __name__=="__main__":
                     R = R.as_euler("xyz")
                     R = R[[0,1,2]] * np.array([1, 1, 1]) + np.array([0, 0, 0])
                     R = Rotation.from_euler("xyz", R)
-                    img, image_mask, kp = apply_rotation(img, R.as_matrix(), kp)
+                    img, image_mask, kp = apply_rotation(img, K, R.as_matrix(), kp, gradient_clip=args.gradientclip)
+                    if args.show_rotation:
+                        cv2.imshow("ROTATION COMPENSATION", img)
+                else:
+                    R = Rotation.from_euler("xyz", [args.xrotation, args.yrotation, args.zrotation])
+                    img, image_mask, kp = apply_rotation(img, K, R.as_matrix(), kp,gradient_clip=args.gradientclip)
                     if args.show_rotation:
                         cv2.imshow("ROTATION COMPENSATION", img)
 
@@ -276,26 +208,34 @@ if __name__=="__main__":
             # Previous Image Keypoints
             dst_pts = np.float32([ kp_prev[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
 
-            # Warp the destination keypoints into the mosaic computing the Similarity tranform
+            # Warp the previous image keypoints into the mosaic's plane
             if A is not None:
                 dst_pts = cv2.perspectiveTransform(dst_pts, np.concatenate((A,np.array([[0, 0, 1]]))))
 
             # Update the homography from current image to mosaic
-            # A, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-            # A, mask = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.RANSAC)
             A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
-            matchesMask = mask.ravel().tolist()
 
             # Get the corners of the current image in homogeneous coords (x,y,w=1)
             src_crn = np.array([[0, img.shape[1], img.shape[1], 0],
                                 [0, 0, img.shape[0], img.shape[0]],
                                 [1, 1, 1, 1]], float)
+
+            # Warp the corners
+            xgrid = np.arange(0, width - 1)
+            ygrid = np.arange(0, height - 1)
+            xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
+            grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
+            warp_dst = A @ grid
+            #warp_dst = warp_grid[:2, :] / warp_grid[-1, :]
+            if args.gradientclip > 0:
+                grad = np.gradient(warp_dst, axis=1)
+                idx = np.sqrt((grad ** 2).sum(axis=0)) < args.gradientclip
+                warp_dst = warp_dst[:, idx]
+
             # Get the corners of the mosaic image in homogeneous coords (x,y,w=1)
             dst_crn = np.array([[0, mosaic_img.shape[1], mosaic_img.shape[1], 0],
                                 [0, 0, mosaic_img.shape[0], mosaic_img.shape[0]],
                                 [1, 1, 1, 1]], float)
-
-            warp_dst = A @ src_crn
 
             # Concatenate the mosaic and warped corner coordinates
             pts = np.concatenate([dst_crn[:2,:], warp_dst], axis=1)
