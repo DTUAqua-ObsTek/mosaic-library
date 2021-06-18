@@ -1,1 +1,10 @@
-.
+numpy
+scipy
+scikit-image
+imutils
+matplotlib
+PyQt5
+keyboard
+pandas
+opencv-contrib-python
+requests

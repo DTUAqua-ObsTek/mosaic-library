@@ -1,6 +1,6 @@
 import numpy as np
 
-from mosaicking.preprocessing import fix_color, fix_contrast, fix_light
+from mosaicking.preprocessing import *
 from mosaicking.utils import *
 from mosaicking.transformations import *
 from pathlib import Path
@@ -25,6 +25,8 @@ if __name__=="__main__":
     parser.add_argument("-y", "--yrotation", type=float, default=0, help="Rotation around image plane's y axis (radians).")
     parser.add_argument("-z", "--zrotation", type=float, default=0, help="Rotation around image plane's z axis (radians).")
     parser.add_argument("-g", "--gradientclip", type=float, default=0, help="Clip the gradient of severely distorted image.")
+    parser.add_argument("-s", "--show", action="store_true", help="Show the output images.")
+    parser.add_argument("-r", "--roi", type=int, nargs=4, default=None, help="Space delimited list of bbox to crop to, order is width, height, top left x, top left y")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -38,6 +40,10 @@ if __name__=="__main__":
     height = int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     n_frames = int(reader.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    if args.roi is not None:
+        width = args.roi[0]
+        height = args.roi[1]
+
     if args.intrinsic is not None:
         K = np.array(args.intrinsic).reshape((3,3)).T
     elif args.calibration is not None:
@@ -50,38 +56,9 @@ if __name__=="__main__":
         K[1, 2] = float(height) / 2
     print("K: {}".format(repr(K)))
 
-    if K.shape[1] < 4:
-        K = np.concatenate((K, np.zeros((3, 1))), axis=1)
-    Kinv = np.zeros((4, 3))
-    Kinv[:3, :3] = np.linalg.inv(K[:3, :3]) * (K[0, 0] * K[1, 1])
-    Kinv[-1, :] = [0, 0, 1]
-    R = euler_rotation(args.xrotation, args.yrotation, args.zrotation)
-    # Translation matrix
-    T = np.array([[1, 0, 0, 0],
-                  [0, 1, 0, 0],
-                  [0, 0, 1, 0],
-                  [0, 0, 0, 1]])
-    # Overall homography matrix
-    H = np.linalg.multi_dot([K, R, T, Kinv])
-    # Warp the corners
-    xgrid = np.arange(0, width - 1)
-    ygrid = np.arange(0, height - 1)
-    xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
-    grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
-    warp_grid = H @ grid
-    pts = warp_grid[:2, :] / warp_grid[-1, :]
-    if args.gradientclip > 0:
-        grad = np.gradient(pts, axis=1)
-        idx = np.sqrt((grad ** 2).sum(axis=0)) < args.gradientclip
-        pts = pts[:, idx]
-    # Round to pixel centers
-    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
-    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
-    T1 = np.array([[1, 0, -xmin],
-                   [0, 1, -ymin],
-                   [0, 0, 1]])
-    H = np.linalg.multi_dot([T1, K, R, T, Kinv])
 
+    R = Rotation.from_euler("xyz", [args.xrotation, args.yrotation, args.zrotation])
+    H, (xmin,xmax), (ymin, ymax) = calculate_homography(K, width, height, R.as_matrix(), np.zeros(3), args.gradientclip)
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(str(video_out), fourcc, fps, (xmax-xmin, ymax-ymin))
@@ -90,22 +67,24 @@ if __name__=="__main__":
             sys.stdout.write("Processing Frame {}\n".format(int(reader.get(cv2.CAP_PROP_POS_FRAMES) + 1)))
             # Acquire a frame
             ret, img = reader.read()
+            if args.roi is not None:
+                roi = [args.roi[-1], args.roi[-1]+args.roi[1], args.roi[-2], args.roi[-2]+args.roi[0]]
+                img = img[roi[0]:roi[1], roi[2]:roi[3], :]
             # Fix color, lighting, contrast
-            #
-
-            img = (img.astype(float)*[1.5,0.5,0.8]).astype(np.uint8)
+            img = rebalance_color(img, 1, 0.5, 1)
             img = fix_light(img)
-
             img = fix_contrast(img)
             img = fix_color(img, 0.9)
             # Rotate the image
-            out = cv2.warpPerspective(img, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            out = cv2.warpPerspective(img, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
             # write the warped frame
             writer.write(out)
             out = cv2.resize(out, (0,0),fx=0.3,fy=0.3,interpolation=cv2.INTER_AREA)
-            cv2.imshow("warp",out)
-            key = cv2.waitKey(5)
-            if key == ord("x"):
+            if args.show:
+                cv2.imshow("warp",out)
+                cv2.imshow("img", cv2.resize(img, (0,0),fx=0.3,fy=0.3,interpolation=cv2.INTER_AREA))
+            key = cv2.waitKey(1)
+            if key > -1:
                 break
     except:
         pass

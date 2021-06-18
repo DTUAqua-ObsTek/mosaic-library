@@ -3,6 +3,13 @@ import os
 import pandas as pd
 
 
+def check_keypress(key: str):
+    press = cv2.waitKey(1)
+    if key == ord(press):
+        return True
+    return False
+
+
 def get_starting_pos(cap: cv2.VideoCapture, args):
     """Set a VideoCapture object to a position (either in seconds or the frame #)"""
     if args.start_time:

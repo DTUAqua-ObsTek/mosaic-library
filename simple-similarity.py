@@ -143,15 +143,13 @@ if __name__=="__main__":
                 if args.orientation_file is not None:
                     lookup_time = reader.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
                     R = Rotation.from_quat(quat_lut(lookup_time))
-                    R = R.as_euler("xyz")
-                    R = Rotation.from_euler("xyz",R)
-                    img, image_mask, kp_prev = apply_rotation(img, K, R.as_matrix(), kp_prev, gradient_clip=args.gradientclip)
+                    img, image_mask, kp_prev = apply_transform(img, K, R, kp_prev, gradient_clip=args.gradientclip)
                     if args.show_rotation:
                         cv2.imshow("ROTATION COMPENSATION", img)
                     mosaic_mask = image_mask.copy()
                 else:
                     R = Rotation.from_euler("xyz", [args.xrotation, args.yrotation, args.zrotation])
-                    img, image_mask, kp_prev = apply_rotation(img, K, R.as_matrix(), kp_prev, gradient_clip=args.gradientclip)
+                    img, image_mask, kp_prev = apply_transform(img, K, R, kp_prev, gradient_clip=args.gradientclip)
                     mosaic_mask = image_mask.copy()
                 mosaic_img = img.copy()  # initialize the mosaic
                 prev_img = img.copy()  # store the image as previous
@@ -174,15 +172,12 @@ if __name__=="__main__":
                 if args.orientation_file is not None:
                     lookup_time = reader.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
                     R = Rotation.from_quat(quat_lut(lookup_time))
-                    R = R.as_euler("xyz")
-                    R = R[[0,1,2]] * np.array([1, 1, 1]) + np.array([0, 0, 0])
-                    R = Rotation.from_euler("xyz", R)
-                    img, image_mask, kp = apply_rotation(img, K, R.as_matrix(), kp, gradient_clip=args.gradientclip)
+                    img, image_mask, kp = apply_transform(img, K, R, kp, gradient_clip=args.gradientclip)
                     if args.show_rotation:
                         cv2.imshow("ROTATION COMPENSATION", img)
                 else:
                     R = Rotation.from_euler("xyz", [args.xrotation, args.yrotation, args.zrotation])
-                    img, image_mask, kp = apply_rotation(img, K, R.as_matrix(), kp,gradient_clip=args.gradientclip)
+                    img, image_mask, kp = apply_transform(img, K, R, kp, gradient_clip=args.gradientclip)
                     if args.show_rotation:
                         cv2.imshow("ROTATION COMPENSATION", img)
 

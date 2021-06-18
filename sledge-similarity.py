@@ -14,7 +14,7 @@ from mosaicking.registration import *
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("video", type=str, help="Path to video file.")
-    parser.add_argument("--output_directory", type=str, help="Path to directory where output mosaics are to be saved. Default is invokation path.", default=".")
+    parser.add_argument("-o", "--output_directory", type=str, help="Path to directory where output mosaics are to be saved. Default is invokation path.", default=".")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--start_time", type=float, help="Time (secs) to start from.")
     group.add_argument("--start_frame", type=int, help="Frame number to start from.")
@@ -31,7 +31,7 @@ if __name__=="__main__":
     parser.add_argument("--max_warp_size", type=int, nargs='+', default=None, help="Maximum size of warped image (used to prevent OOM errors), if 1 argument given then image is clipped to square, if 2 then the order is height, width.")
     parser.add_argument("--max_mosaic_size", type=int, default=None, help="Largest allowable size (width or height) for mosaic. Creates a new tile if it gets bigger.")
     parser.add_argument("--save_freq", type=int, default=0, help="Save frequency for output mosaic (if less than 1 then output saves at exit).")
-    parser.add_argument("--scale_factor", type=float, default=0.0, help="Scale the input image with constant aspect ratio.")
+    parser.add_argument("--scale_factor", type=float, default=1.0, help="Scale the input image with constant aspect ratio.")
     parser.add_argument("--alpha", type=float, default=0.5, help="Alpha blending scalar for merging new frames into mosaic.")
     parser.add_argument("--show_rotation", action="store_true", help="Flag to display the rotation compensation using rotation data.")
     parser.add_argument("--show_mosaic", action="store_true", help="Flag to display the mosaic output.")
@@ -47,6 +47,10 @@ if __name__=="__main__":
     parser.add_argument("-y", "--yrotation", type=float, default=0, help="Rotation around image plane's y axis (radians).")
     parser.add_argument("-z", "--zrotation", type=float, default=0, help="Rotation around image plane's z axis (radians).")
     parser.add_argument("-g", "--gradientclip", type=float, default=0, help="Clip the gradient of severely distorted image.")
+    parser.add_argument("--write_video", action="store_true", help="Flag to save demonstration of mosaic")
+    parser.add_argument("--rebalance", type=float, nargs=3, default=[1.0,1.0,1.0], help="Space delimited factors to multiply color channels by, in order: R, G, B")
+    parser.add_argument("-r", "--roi", type=int, nargs=4, default=None, help="Space delimited list of bbox to crop to, order is width, height, top left x, top left y")
+    parser.add_argument("--show_matches", action="store_true", help="Flag to show matches made.")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -67,22 +71,32 @@ if __name__=="__main__":
     fps = reader.get(cv2.CAP_PROP_FPS)
     width = int(reader.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    if args.roi is not None:
+        width = args.roi[0]
+        height = args.roi[1]
+
+    if args.write_video:
+        writer = cv2.VideoWriter(str(output_path.joinpath("Mosaic_"+video_path.name)), cv2.VideoWriter.fourcc(*"MP4V"), fps, (width, height))
     n_frames = int(reader.get(cv2.CAP_PROP_FRAME_COUNT))
     formatspec = "{:0"+"{}d".format(len(str(n_frames)))+"}"
     if args.show_mosaic:
         cv2.namedWindow(str(video_path), cv2.WINDOW_NORMAL)
-    if args.show_rotation:
-        cv2.namedWindow("ROTATION COMPENSATION", cv2.WINDOW_NORMAL)
+    # if args.show_rotation:
+    #     cv2.namedWindow("ROTATION COMPENSATION", cv2.WINDOW_NORMAL)
     if args.show_preprocessing:
         cv2.namedWindow("PREPROCESSING RESULT", cv2.WINDOW_NORMAL)
+    if args.show_matches:
+        cv2.namedWindow("MATCHES", cv2.WINDOW_NORMAL)
 
     detector = cv2.ORB_create(nfeatures=500)  # ORB detector is pretty good and is CC licensed
+    detector = cv2.SIFT_create(nfeatures=500)
 
     # FLANN parameters
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
     search_params = dict(checks=50)  # or pass empty dictionary
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
+    matcher = cv2.FlannBasedMatcher(index_params, search_params)
 
     # Camera Intrinsic Matrix
     if args.intrinsic is not None:
@@ -109,6 +123,7 @@ if __name__=="__main__":
     first = True
     counter = 0
     tile_counter = 0
+    key = -1
     try:  # External try to handle any unexpected errors
         while not evaluate_stopping(reader, args):
             sys.stdout.write("Processing Frame {}\n".format(int(reader.get(cv2.CAP_PROP_POS_FRAMES)+1)))
@@ -116,43 +131,42 @@ if __name__=="__main__":
                 reader.set(cv2.CAP_PROP_POS_FRAMES, reader.get(cv2.CAP_PROP_POS_FRAMES)+args.frame_skip-1)
             # Acquire a frame
             ret, img = reader.read()
-            og = img.copy()  # keep a copy for later reference
-
             if not ret:
                 sys.stderr.write("Frame missing: {}\n".format(formatspec.format(int(reader.get(cv2.CAP_PROP_POS_FRAMES)))))
                 continue
+            if args.roi is not None:
+                roi = [args.roi[-1], args.roi[-1]+args.roi[1], args.roi[-2], args.roi[-2]+args.roi[0]]
+                img = img[roi[0]:roi[1], roi[2]:roi[3], :]
+            og = img.copy()  # keep a copy for later reference
 
             # Preprocess the image
             img = cv2.undistort(img, K, distCoeff)
+            img = rebalance_color(img, *args.rebalance)
             img = fix_color(img) if args.fix_color else img
             img = fix_contrast(img) if args.fix_contrast else img
             img = fix_light(img) if args.fix_light else img
             if args.show_preprocessing:
-                cv2.imshow("PREPROCESSING RESULT", np.concatenate((og, img)))
-
+                cv2.imshow("PREPROCESSING RESULT", np.concatenate((og, img), axis=1))
+                cv2.waitKey(1)
             if first:
                 # Detect keypoints on the first frame
                 kp_prev, des_prev = get_features(img, detector)
                 if len(kp_prev) < args.min_features:
                     sys.stderr.write("Not Enough Features, Finding Good Frame.\n")
                     continue
-                # Apply scaling to image if specified
-                if args.scale_factor > 0.0:
-                    img, kp_prev = scale_img(img, kp_prev, args.scale_factor)
                 # Apply rotation to image if necessary
                 if args.orientation_file is not None:
                     lookup_time = reader.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
                     R = Rotation.from_quat(quat_lut(lookup_time))
-                    R = R.as_euler("xyz")
-                    R = Rotation.from_euler("xyz",R)
-                    img, image_mask, kp_prev = apply_rotation(img, K, R.as_matrix(), kp_prev, gradient_clip=args.gradientclip)
-                    if args.show_rotation:
-                        cv2.imshow("ROTATION COMPENSATION", img)
+                    img, image_mask, kp_prev = apply_transform(img, K, R, np.zeros(3, dtype=float), kp_prev, args.scale_factor, gradient_clip=args.gradientclip)
                     mosaic_mask = image_mask.copy()
                 else:
                     R = Rotation.from_euler("xyz", [args.xrotation, args.yrotation, args.zrotation])
-                    img, image_mask, kp_prev = apply_rotation(img, K, R.as_matrix(), kp_prev, gradient_clip=args.gradientclip)
+                    img, image_mask, kp_prev = apply_transform(img, K, R, np.zeros(3, dtype=float), kp_prev, args.scale_factor, gradient_clip=args.gradientclip)
                     mosaic_mask = image_mask.copy()
+                if args.show_rotation:
+                    cv2.imshow("ROTATION COMPENSATION", img)
+                    cv2.waitKey(1)
                 mosaic_img = img.copy()  # initialize the mosaic
                 prev_img = img.copy()  # store the image as previous
                 first = False
@@ -169,29 +183,24 @@ if __name__=="__main__":
                     cv2.imwrite(str(fpath), mosaic_img)
                     tile_counter = tile_counter + 1
                     continue
-                if args.scale_factor > 0.0:
-                    img, kp = scale_img(img, kp, args.scale_factor)
                 if args.orientation_file is not None:
                     lookup_time = reader.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
                     R = Rotation.from_quat(quat_lut(lookup_time))
-                    R = R.as_euler("xyz")
-                    R = R[[0,1,2]] * np.array([1, 1, 1]) + np.array([0, 0, 0])
-                    R = Rotation.from_euler("xyz", R)
-                    img, image_mask, kp = apply_rotation(img, K, R.as_matrix(), kp, gradient_clip=args.gradientclip)
-                    if args.show_rotation:
-                        cv2.imshow("ROTATION COMPENSATION", img)
+                    img, image_mask, kp = apply_transform(img, K, R, np.zeros(3, dtype=float), kp, args.scale_factor, gradient_clip=args.gradientclip)
                 else:
+                    image_mask = np.ones(img.shape[:2], dtype='uint8')
                     R = Rotation.from_euler("xyz", [args.xrotation, args.yrotation, args.zrotation])
-                    img, image_mask, kp = apply_rotation(img, K, R.as_matrix(), kp,gradient_clip=args.gradientclip)
-                    if args.show_rotation:
-                        cv2.imshow("ROTATION COMPENSATION", img)
+                    img, image_mask, kp = apply_transform(img, K, R, np.zeros(3, dtype=float), kp, args.scale_factor, gradient_clip=args.gradientclip)
+                if args.show_rotation:
+                    cv2.imshow("ROTATION COMPENSATION", img)
+                    cv2.waitKey(1)
 
             if len(kp) < args.min_features:
                 sys.stderr.write("Not Enough Features, Skipping Frame.\n")
                 continue
 
             # Match descriptors between previous and new
-            knn_matches = flann.knnMatch(des_prev.astype(np.float32), des.astype(np.float32), 2)
+            knn_matches = matcher.knnMatch(des_prev.astype(np.float32), des.astype(np.float32), 2)
 
             # store all the good matches as per Lowe's ratio test.
             good = []
@@ -203,6 +212,12 @@ if __name__=="__main__":
                 sys.stderr.write("Not Enough Matches, Skipping Frame.\n")
                 continue
 
+            if args.show_matches:
+                m_img = np.zeros_like(img)
+                m_img = cv2.drawMatches(prev_img, kp_prev, img, kp, good, m_img)
+                cv2.imshow("MATCHES", m_img)
+                cv2.waitKey(1)
+
             # Current Image Keypoints
             src_pts = np.float32([ kp[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
             # Previous Image Keypoints
@@ -211,9 +226,13 @@ if __name__=="__main__":
             # Warp the previous image keypoints into the mosaic's plane
             if A is not None:
                 dst_pts = cv2.perspectiveTransform(dst_pts, np.concatenate((A,np.array([[0, 0, 1]]))))
+                # dst_pts = cv2.perspectiveTransform(dst_pts, A)
+
 
             # Update the homography from current image to mosaic
             A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
+            # A, mask = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.RANSAC)
+            # A, mask = cv2.findHomography(src_pts.squeeze(), dst_pts.squeeze(), cv2.RANSAC)
 
             # Get the corners of the current image in homogeneous coords (x,y,w=1)
             src_crn = np.array([[0, img.shape[1], img.shape[1], 0],
@@ -221,6 +240,7 @@ if __name__=="__main__":
                                 [1, 1, 1, 1]], float)
 
             warp_dst = A @ src_crn
+            # warp_dst = warp_dst[:2, :] / warp_dst[-1, :]
 
             # Get the corners of the mosaic image in homogeneous coords (x,y,w=1)
             dst_crn = np.array([[0, mosaic_img.shape[1], mosaic_img.shape[1], 0],
@@ -234,6 +254,7 @@ if __name__=="__main__":
             xmin,ymin = np.int32(pts.min(axis=1) - 0.5)
             xmax,ymax = np.int32(pts.max(axis=1) + 0.5)
 
+            # t = [-xmin, -ymin, 0]  # calculate translation
             t = [-xmin, -ymin]  # calculate translation
             A[:,-1] = A[:,-1]+t  # translation homography
 
@@ -248,10 +269,13 @@ if __name__=="__main__":
 
             # warp the input image into the mosaic's plane
             warped = cv2.warpAffine(img, A, (xmax - xmin, ymax - ymin))
+            # warped = cv2.warpPerspective(img, A, (xmax - xmin, ymax - ymin))
             warped_mask = cv2.warpAffine(image_mask, A, (xmax - xmin, ymax - ymin))
+            # warped_mask = cv2.warpPerspective(image_mask, A, (xmax - xmin, ymax - ymin))
 
             # Get the previous iteration mosaic_mask in the shape of the update
             template = cv2.warpAffine(np.zeros(img.shape, np.uint8), A, (xmax - xmin, ymax - ymin))
+            # template = cv2.warpPerspective(np.zeros(img.shape, np.uint8), A, (xmax - xmin, ymax - ymin))
             mosaic_mask_ = template[:, :, 0].copy()
             mosaic_mask_[t[1]:mosaic_mask.shape[0] + t[1], t[0]:mosaic_mask.shape[1] + t[0]] = mosaic_mask
             mosaic_img_ = template.copy()
@@ -273,12 +297,12 @@ if __name__=="__main__":
             # Display the mosaic
             if args.show_mosaic:
                 cv2.imshow(str(video_path), mosaic_img)
+                key = cv2.waitKey(1)
 
             prev_img = img.copy()  # Update the previous frame
             kp_prev = kp  # Update the previous keypoints
             des_prev = des.copy()  # Update the previous descriptors
 
-            key = cv2.waitKey(10)
             counter = counter + 1
             if args.save_freq > 0 and counter % args.save_freq == 0:
                 counter = 0
@@ -291,14 +315,13 @@ if __name__=="__main__":
         cv2.imwrite("error_img.png", mosaic_img)
         cv2.imwrite("error_frame.png", img)
         sys.stderr.write("\nPipeline failed at frame {}\n".format(reader.get(cv2.CAP_PROP_POS_FRAMES)+1))
-        cv2.destroyWindow(str(video_path))
+        cv2.destroyAllWindows()
         reader.release()
         raise err
     # The video exited properly, so cleanup and exit.
     fpath = output_path.joinpath("tile_{:03d}.png".format(tile_counter))
     cv2.imwrite(str(fpath), mosaic_img)
-    if args.show_mosaic:
-        cv2.destroyWindow(str(video_path))
-    if args.show_rotation:
-        cv2.destroyWindow("ROTATION COMPENSATION")
+    cv2.destroyAllWindows()
     reader.release()
+    if args.write_video:
+        writer.release()

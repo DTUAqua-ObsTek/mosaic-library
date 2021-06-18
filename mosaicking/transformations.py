@@ -1,53 +1,54 @@
 import numpy as np
 import cv2
 from scipy.spatial.transform import Rotation
-import matplotlib.pyplot as plt
+from scipy.spatial.distance import pdist, squareform
 
 
-def calculate_friendly_affine(A: np.ndarray, width: int, height: int, gradient_clip: float):
-    # Warp the corners of the image
-    xgrid = np.arange(0, width - 1)
-    ygrid = np.arange(0, height - 1)
-    xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
-    grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
-    warp_grid = A @ grid
-    pts = warp_grid[:2, :] / warp_grid[-1, :]
-    if gradient_clip > 0:
-        grad = np.gradient(pts, axis=1)
-        idx = np.sqrt((grad ** 2).sum(axis=0)) < gradient_clip
-        pts = pts[:, idx]
-    # Round to pixel centers
-    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
-    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
-    T1 = np.array([[1, 0, -xmin],
-                   [0, 1, -ymin]])
-    A = np.linalg.multi_dot([T1, A])
-
-
-def calculate_homography(K: np.ndarray, width: int, height: int, euler_x: float, euler_y: float, euler_z: float, gradient_clip: float=0.0):
+def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, T: np.ndarray, scale: float, gradient_clip: float=0.0):
     if K.shape[1] < 4:
         K = np.concatenate((K, np.zeros((3, 1))), axis=1)
+    # Calculate the inverse of K
     Kinv = np.zeros((4, 3))
     Kinv[:3, :3] = np.linalg.inv(K[:3, :3]) * (K[0, 0] * K[1, 1])
     Kinv[-1, :] = [0, 0, 1]
-    R = euler_rotation(euler_x, euler_y, euler_z)
+    if R.size < 16:
+        tmp = np.eye(4,dtype=float)
+        tmp[:3,:3] = R
+        R = tmp.copy()
+        del tmp
     # Translation matrix
-    T = np.array([[1, 0, 0, 0],
-                  [0, 1, 0, 0],
-                  [0, 0, 1, 0],
-                  [0, 0, 0, 1]])
-    # Overall homography matrix
+    if T.size < 16:
+        T = T.squeeze()
+        T = np.array([[1, 0, 0, T[0]],
+                      [0, 1, 0, T[1]],
+                      [0, 0, 1, T[2]],
+                      [0, 0, 0, 1]])
+    # Convert plane to rays, rotate and translate rays, project to image plane homography matrix
+    S = np.array([[scale, 0, 0],
+                  [0, scale, 0],
+                  [0, 0, 1]], dtype=float)
     H = np.linalg.multi_dot([K, R, T, Kinv])
-    # Warp the corners
-    xgrid = np.arange(0, width - 1)
-    ygrid = np.arange(0, height - 1)
+
+    # H = S @ H
+    # H = S @ H @ np.linalg.inv(S)
+    # Warp a grid of points on the image plane
+    xgrid = np.arange(0, width-1)
+    ygrid = np.arange(0, height-1)
     xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
     grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
     warp_grid = H @ grid
     pts = warp_grid[:2, :] / warp_grid[-1, :]
     if gradient_clip > 0:
-        grad = np.gradient(pts, axis=1)
-        idx = np.sqrt((grad ** 2).sum(axis=0)) < gradient_clip
+        warp_xx = pts[0, :].reshape(xx.shape)
+        warp_yy = pts[1, :].reshape(yy.shape)
+        dGu = np.stack(np.gradient(warp_xx),axis=-1)
+        dGv = np.stack(np.gradient(warp_yy),axis=-1)
+        slope = np.sqrt((dGu**2).sum(axis=-1) + (dGv**2).sum(axis=-1))
+        safe = slope < gradient_clip
+        xindx = np.argwhere(safe.any(axis=0))
+        yindx = np.argwhere(safe.any(axis=1))
+        ii, jj = np.meshgrid(xindx, yindx)
+        idx = np.ravel_multi_index((jj.flatten(),ii.flatten()), (xx.shape))
         pts = pts[:, idx]
     # Round to pixel centers
     xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
@@ -56,16 +57,16 @@ def calculate_homography(K: np.ndarray, width: int, height: int, euler_x: float,
                    [0, 1, -ymin],
                    [0, 0, 1]])
     H = np.linalg.multi_dot([T1, K, R, T, Kinv])
-    return H, (xmax - xmin, ymax - ymin), (xmin, xmax), (ymin, ymax)
+    return H, (xmin, xmax), (ymin, ymax)
 
 
-def apply_rotation(img: np.ndarray, K: np.ndarray, rotation: np.ndarray, keypoints: list, mask: np.ndarray = None, gradient_clip: float = 0.0):
-    eulers = Rotation.from_dcm(rotation).as_euler("xyz")
-    H, bbox, xbounds, ybounds = calculate_homography(K, img.shape[1], img.shape[0], eulers[0], eulers[1], eulers[2], gradient_clip)
-    out = cv2.warpPerspective(img, H, bbox)
+def apply_transform(img: np.ndarray, K: np.ndarray, R: Rotation, T: np.ndarray, keypoints: list, scale: float, mask: np.ndarray = None, gradient_clip: float = 0.0):
+    img, keypoints = scale_img(img, keypoints, scale)
+    H, (xmin,xmax), (ymin, ymax) = calculate_homography(K, img.shape[1], img.shape[0], R.as_matrix(), T, scale, gradient_clip)
+    out = cv2.warpPerspective(img, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     if mask is None:
         mask = np.ones(img.shape[:2], dtype='uint8')
-    mask = cv2.warpPerspective(mask, H, bbox)
+    mask = cv2.warpPerspective(mask, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     pts = [k.pt for k in keypoints]
     pts = H @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
     pts = (pts[:2, :]/pts[-1,:]).T

@@ -9,6 +9,10 @@ def const_ar_scale(img, scaling):
     return cv2.resize(img, (0, 0), fx=scaling, fy=scaling)
 
 
+def rebalance_color(img: np.ndarray, r: float, g: float, b: float):
+    return (img.astype(float)*[b,g,r]).astype(np.uint8)
+
+
 # Color Correction
 def fix_color(img: np.ndarray, percent: float=0.8):
     img = img_as_ubyte(img)
