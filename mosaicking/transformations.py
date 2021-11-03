@@ -1,10 +1,10 @@
 import numpy as np
 import cv2
 from scipy.spatial.transform import Rotation
-from scipy.spatial.distance import pdist, squareform
+import sys
 
 
-def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, T: np.ndarray, scale: float, gradient_clip: float=0.0):
+def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, T: np.ndarray, gradient_clip: float=0.0):
     if K.shape[1] < 4:
         K = np.concatenate((K, np.zeros((3, 1))), axis=1)
     # Calculate the inverse of K
@@ -23,17 +23,10 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
                       [0, 1, 0, T[1]],
                       [0, 0, 1, T[2]],
                       [0, 0, 0, 1]])
-    # Convert plane to rays, rotate and translate rays, project to image plane homography matrix
-    S = np.array([[scale, 0, 0],
-                  [0, scale, 0],
-                  [0, 0, 1]], dtype=float)
     H = np.linalg.multi_dot([K, R, T, Kinv])
-
-    # H = S @ H
-    # H = S @ H @ np.linalg.inv(S)
     # Warp a grid of points on the image plane
-    xgrid = np.arange(0, width-1)
-    ygrid = np.arange(0, height-1)
+    xgrid = np.arange(0, width)
+    ygrid = np.arange(0, height)
     xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
     grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
     warp_grid = H @ grid
@@ -45,14 +38,17 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
         dGv = np.stack(np.gradient(warp_yy),axis=-1)
         slope = np.sqrt((dGu**2).sum(axis=-1) + (dGv**2).sum(axis=-1))
         safe = slope < gradient_clip
-        xindx = np.argwhere(safe.any(axis=0))
-        yindx = np.argwhere(safe.any(axis=1))
+        xindx = np.argwhere(safe.any(axis=1))  # columns where safe exists
+        yindx = np.argwhere(safe.any(axis=0))  # rows where safe exists
         ii, jj = np.meshgrid(xindx, yindx)
-        idx = np.ravel_multi_index((jj.flatten(),ii.flatten()), (xx.shape))
-        pts = pts[:, idx]
-    # Round to pixel centers
-    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
-    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
+        idx = np.ravel_multi_index((ii.flatten(),jj.flatten()), (xx.shape))
+        if not idx.any():
+            sys.stderr.write("WARNING: Gradient Explosion. Is the Image Rapidly Zooming In/Out? Gradient clipping is suppressed to allow continuity, consider increasing gradient clip argument.")
+        else:
+            pts = pts[:, idx]
+    # Round inswards to pixel centers
+    xmin, ymin = np.int32(pts.min(axis=1) + 0.5)
+    xmax, ymax = np.int32(pts.max(axis=1) - 0.5)
     T1 = np.array([[1, 0, -xmin],
                    [0, 1, -ymin],
                    [0, 0, 1]])
@@ -60,35 +56,52 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
     return H, (xmin, xmax), (ymin, ymax)
 
 
-def apply_transform(img: np.ndarray, K: np.ndarray, R: Rotation, T: np.ndarray, keypoints: list, scale: float, mask: np.ndarray = None, gradient_clip: float = 0.0):
-    img, keypoints = scale_img(img, keypoints, scale)
-    H, (xmin,xmax), (ymin, ymax) = calculate_homography(K, img.shape[1], img.shape[0], R.as_matrix(), T, scale, gradient_clip)
-    out = cv2.warpPerspective(img, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+def apply_transform(img: np.ndarray, K: np.ndarray, R: Rotation, T: np.ndarray, keypoints: list, scale: float = None, mask: np.ndarray = None, gradient_clip: float = 0.0):
+    """
+    img: input image
+    K: camera calibration matrix
+    R: Rotation matrix
+    T: Translation vector (m)
+    keypoints: list of keypoints
+    scale: zoom scaling
+    mask: input mask
+    gradient_clip: clip off warped components where spatial gradient is more than cut-off
+    """
+    H, (xmin,xmax), (ymin, ymax) = calculate_homography(K, img.shape[1], img.shape[0], R.as_matrix(), T, gradient_clip)
+    img_warped = cv2.warpPerspective(img, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     if mask is None:
-        mask = np.ones(img.shape[:2], dtype='uint8')
-    mask = cv2.warpPerspective(mask, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        mask = 255 * np.ones_like(img)[:, :, 0]
+    mask_warped = cv2.warpPerspective(mask, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     pts = [k.pt for k in keypoints]
     pts = H @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
     pts = (pts[:2, :]/pts[-1,:]).T
     for k, pt in zip(keypoints, pts):
         k.pt = tuple(pt)
-    return out, mask, keypoints
+    if scale is not None:
+        img_warped, keypoints, mask_warped = apply_scale(img_warped, keypoints, scale, mask_warped)
+    return img_warped, mask_warped, keypoints
 
 
-def scale_img(img: np.ndarray, keypoints: list, scale: float):
+def apply_scale(img: np.ndarray, keypoints: list, scale: float, mask: np.ndarray=None):
+    if scale == 1.0:
+        return img, keypoints, mask
     if scale < 1:
         img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        if mask is not None:
+            mask = cv2.resize(mask, (0,0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     else:
         img = cv2.resize(img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        if mask is not None:
+            mask = cv2.resize(mask, (0,0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     S = np.eye(3, dtype=float)
     S[0,0] = scale
     S[1,1] = scale
     pts = [k.pt for k in keypoints]
     pts = S @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
-    pts = pts[:2, :].T
+    pts = (pts[:2, :] / pts[-1, :]).T
     for k, pt in zip(keypoints, pts):
         k.pt = tuple(pt)
-    return img, keypoints
+    return img, keypoints, mask
 
 
 ## euler rotation methods

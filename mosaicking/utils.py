@@ -3,6 +3,12 @@ import os
 import pandas as pd
 
 
+class VideoPlayer:
+    def __init__(self, file: str, show: bool = False):
+        if show:
+            cv2.namedWindow("original", cv2.WINDOW_NORMAL)
+
+
 def check_keypress(key: str):
     press = cv2.waitKey(1)
     if key == ord(press):

@@ -1,3 +1,5 @@
+import sys
+
 import cv2
 import numpy as np
 import imutils
@@ -5,11 +7,118 @@ from skimage import util
 import copy
 
 
+def get_matches(descriptors1: np.ndarray, descriptors2: np.ndarray, matcher: cv2.DescriptorMatcher, minmatches: int):
+    # New image prepared and enough features were found, find matches.
+    # Match descriptors between previous and new
+    knn_matches = matcher.knnMatch(descriptors1.astype(np.float32), descriptors2.astype(np.float32), 2)
+
+    # store all the good matches as per Lowe's ratio test.
+    good = []
+    for m, n in knn_matches:
+        if m.distance < 0.7 * n.distance:
+            good.append(m)
+
+    return minmatches < len(good), good
+
+
 def get_features(img: np.ndarray, fdet: cv2.Feature2D, mask=None):
-    """Given a feature detector, obtain the features found in the image."""
+    """
+    Given a feature detector, obtain the features found in the image.
+    """
     if img.ndim > 2:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return fdet.detectAndCompute(img, mask)
+
+
+def get_similarity_alignment(src_pts: np.ndarray, src_shape: tuple, dst_pts: np.ndarray, dst_shape: tuple, gradient: float = 0.0):
+    # Update the homography from current image to mosaic
+    #A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
+    A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.LMEDS)
+
+    # # Get the corners of the current image in homogeneous coords (x,y,w=1)
+    # src_crn = np.array([[0, img.shape[1], img.shape[1], 0],
+    #                     [0, 0, img.shape[0], img.shape[0]],
+    #                     [1, 1, 1, 1]], float)
+
+    # Warp a grid
+    xgrid = np.arange(0, src_shape[1] - 1)
+    ygrid = np.arange(0, src_shape[0] - 1)
+    xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
+    grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
+    warp_dst = A @ grid
+    # warp_dst = warp_dst[:2, :] / warp_dst[-1, :]
+    if gradient > 0:
+        grad = np.gradient(warp_dst, axis=1)
+        idx = np.sqrt((grad ** 2).sum(axis=0)) < gradient
+        if not idx.any():
+            sys.stderr.write("WARNING: Gradient Explosion. Is the Image Rapidly Zooming In/Out? Gradient clipping is suppressed to allow continuity, consider increasing gradient clip argument.")
+        else:
+            warp_dst = warp_dst[:, idx]
+
+    # Get the corners of the mosaic image in homogeneous coords (x,y,w=1)
+    dst_crn = np.array([[0, dst_shape[1], dst_shape[1], 0],
+                        [0, 0, dst_shape[0], dst_shape[0]],
+                        [1, 1, 1, 1]], float)
+
+    # Concatenate the mosaic and warped corner coordinates
+    pts = np.concatenate([dst_crn[:2, :], warp_dst], axis=1)
+
+    # Round to pixel centers
+    # xmin, ymin, width, height = cv2.boundingRect(pts.T.astype(np.float32))
+    # xmax = xmin + width - 1
+    # ymax = ymin + height - 1
+    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
+    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
+
+    t = [-xmin, -ymin]  # translation of the upper left corner of the image
+    A[:, -1] = A[:, -1] + t  # translation homography
+    return A, (xmin, xmax), (ymin, ymax)
+
+
+def get_affine_alignment(src_pts: np.ndarray, src_shape: tuple, dst_pts: np.ndarray, dst_shape: tuple, gradient: float = 0.0):
+    # Update the homography from current image to mosaic
+    #A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
+    #A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.LMEDS)
+    A, mask = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.LMEDS)
+
+    # # Get the corners of the current image in homogeneous coords (x,y,w=1)
+    # src_crn = np.array([[0, img.shape[1], img.shape[1], 0],
+    #                     [0, 0, img.shape[0], img.shape[0]],
+    #                     [1, 1, 1, 1]], float)
+
+    # Warp a grid
+    xgrid = np.arange(0, src_shape[1] - 1)
+    ygrid = np.arange(0, src_shape[0] - 1)
+    xx, yy = np.meshgrid(xgrid, ygrid, indexing='ij')
+    grid = np.stack((xx.flatten(), yy.flatten(), np.ones_like(yy.flatten())), 0)
+    warp_dst = A @ grid
+    # warp_dst = warp_dst[:2, :] / warp_dst[-1, :]
+    if gradient > 0:
+        grad = np.gradient(warp_dst, axis=1)
+        idx = np.sqrt((grad ** 2).sum(axis=0)) < gradient
+        if not idx.any():
+            sys.stderr.write("WARNING: Gradient Explosion. Is the Image Rapidly Zooming In/Out? Gradient clipping is suppressed to allow continuity, consider increasing gradient clip argument.")
+        else:
+            warp_dst = warp_dst[:, idx]
+
+    # Get the corners of the mosaic image in homogeneous coords (x,y,w=1)
+    dst_crn = np.array([[0, dst_shape[1], dst_shape[1], 0],
+                        [0, 0, dst_shape[0], dst_shape[0]],
+                        [1, 1, 1, 1]], float)
+
+    # Concatenate the mosaic and warped corner coordinates
+    pts = np.concatenate([dst_crn[:2, :], warp_dst], axis=1)
+
+    # Round to pixel centers
+    # xmin, ymin, width, height = cv2.boundingRect(pts.T.astype(np.float32))
+    # xmax = xmin + width - 1
+    # ymax = ymin + height - 1
+    xmin, ymin = np.int32(pts.min(axis=1) - 0.5)
+    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
+
+    t = [-xmin, -ymin]  # translation of the upper left corner of the image
+    A[:, -1] = A[:, -1] + t  # translation homography
+    return A, (xmin, xmax), (ymin, ymax)
 
 
 def alignImages(im1: np.ndarray, im2: np.ndarray, detector: cv2.Feature2D, last_tf=None):
@@ -70,17 +179,14 @@ def alignImages(im1: np.ndarray, im2: np.ndarray, detector: cv2.Feature2D, last_
     corners2 = np.float32([[0, 0], [0, h2-1], [w2-1, h2-1], [w2-1, 0]]).reshape(-1, 1, 2)
 
     ## Warp the corners of im2
-    warpedCorners2 = cv2.perspectiveTransform(corners2, H)  # The transformation matrix
+    warpedCorners2 = cv2.perspectiveTransform(corners2, H)  # The transformed corners of img 2
 
     # Consider the corner points of both mosaic and input image
     corners = np.concatenate((corners1, warpedCorners2), axis=0)
 
-    # # Find the min and max offset for the bounding box
-    # [xmin, ymin] = np.int32(corners.min(axis=0).ravel() - 0.5)
-    # [xmax, ymax] = np.int32(corners.max(axis=0).ravel() + 0.5)
-    # # Calculate translation
-    # translation = np.float32(([1, 0, -xmin], [0, 1, -ymin], [0, 0, 1]))
+    # Find the min and max offset for the bounding box
     bx, by, bwidth, bheight = cv2.boundingRect(corners)
+    # Calculate translation
     translation = np.float32([[1, 0, -bx],
                               [0, 1, -by],
                               [0, 0, 1]])

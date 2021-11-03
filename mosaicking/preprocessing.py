@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from skimage.util import *
+from skimage.util import img_as_ubyte
 
 
 # Image Pre-processing Module
@@ -16,7 +16,6 @@ def rebalance_color(img: np.ndarray, r: float, g: float, b: float):
 # Color Correction
 def fix_color(img: np.ndarray, percent: float=0.8):
     img = img_as_ubyte(img)
-    dtype = img.dtype
     out_channels = []
     cumstops = (
         img.shape[0] * img.shape[1] * percent / 200.0,
