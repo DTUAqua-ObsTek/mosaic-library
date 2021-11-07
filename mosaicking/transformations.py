@@ -11,19 +11,9 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
     Kinv = np.zeros((4, 3))
     Kinv[:3, :3] = np.linalg.inv(K[:3, :3]) * (K[0, 0] * K[1, 1])
     Kinv[-1, :] = [0, 0, 1]
-    if R.size < 16:
-        tmp = np.eye(4,dtype=float)
-        tmp[:3,:3] = R
-        R = tmp.copy()
-        del tmp
-    # Translation matrix
-    if T.size < 16:
-        T = T.squeeze()
-        T = np.array([[1, 0, 0, T[0]],
-                      [0, 1, 0, T[1]],
-                      [0, 0, 1, T[2]],
-                      [0, 0, 0, 1]])
-    H = np.linalg.multi_dot([K, R, T, Kinv])
+    #E = get_extrinsic_matrix(R, T)
+    E = np.concatenate((np.concatenate((R, T.reshape(3,1)), axis=1), [[0,0,0,1]]), axis=0)
+    H = np.linalg.multi_dot([K, E, Kinv])
     # Warp a grid of points on the image plane
     xgrid = np.arange(0, width)
     ygrid = np.arange(0, height)
@@ -52,7 +42,7 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
     T1 = np.array([[1, 0, -xmin],
                    [0, 1, -ymin],
                    [0, 0, 1]])
-    H = np.linalg.multi_dot([T1, K, R, T, Kinv])
+    H = np.linalg.multi_dot([T1, K, E, Kinv])
     return H, (xmin, xmax), (ymin, ymax)
 
 
@@ -60,8 +50,8 @@ def apply_transform(img: np.ndarray, K: np.ndarray, R: Rotation, T: np.ndarray, 
     """
     img: input image
     K: camera calibration matrix
-    R: Rotation matrix
-    T: Translation vector (m)
+    R: Rotation matrix from world to camera
+    T: Translation vector (m) from world to camera
     keypoints: list of keypoints
     scale: zoom scaling
     mask: input mask
@@ -102,6 +92,32 @@ def apply_scale(img: np.ndarray, keypoints: list, scale: float, mask: np.ndarray
     for k, pt in zip(keypoints, pts):
         k.pt = tuple(pt)
     return img, keypoints, mask
+
+
+def get_extrinsic_matrix(Rc: np.ndarray, C: np.ndarray, order: str = "xyz", degrees: bool=False):
+    """
+    Converts a rotation from world to camera and C from world to camera into the correct extrinsic form (camera to world).
+    @param Rc: Rotation from world frame to camera frame, can be a size 3 euler angle vector, quaternion (wxyz) or rotation matrix.
+    @param C: Translation from world frame to camera frame, must be a size 3 vector.
+    @param order: String specifying order for euler angles, must be a permutation of "xyz".
+    @param degrees: Flag to indicate if euler angles are in degrees.
+    """
+    if Rc.size not in [3, 4, 9]:
+        raise ValueError("Rotation must be of size 3, 4 or 9.")
+    if C.size != 3:
+        raise ValueError("Translation must be of size 3.")
+    C = C.reshape((3, 1))
+    if Rc.size == 3:
+        Rc = Rotation.from_euler("xyz", Rc, degrees=degrees).as_matrix()
+    elif Rc.size == 4:
+        Rc = Rotation.from_quat(Rc).as_matrix()
+    else:
+        if Rc.ndim < 2:
+            Rc = Rc.reshape((3, 3))
+        Rc = Rotation.from_matrix(Rc).as_matrix()
+    R = Rc.T
+    t = -R @ C
+    return np.concatenate((np.concatenate((R, t), axis=1), [[0,0,0,1]]), axis=0)
 
 
 ## euler rotation methods
@@ -219,7 +235,7 @@ def bird_view(image, pitch=45):
     [xMax, yMax] = np.int32(warpedCorners.max(axis=0).ravel() + 0.5)
     translation = np.array(
         ([1, 0, -1 * xMin], [0, 1, -1 * yMin], [0, 0, 1]))  # must translate image so that all of it is visible
-    fullTransformation = np.dot(translation, H)  # compose warp and translation in correct order
+    fullTransformation = np.dot(translation, H)  # compose warp and C in correct order
     #    Minv = cv2.getPerspectiveTransform(dst, src) # Inverse transformation
     warped_img = cv2.warpPerspective(image, fullTransformation, (2 * IMAGE_W, 2 * IMAGE_H),
                                      flags=cv2.INTER_NEAREST + cv2.WARP_FILL_OUTLIERS)  # Image warping
@@ -242,9 +258,9 @@ import cv2
 #     theta     : rotation around the x axis
 #     phi       : rotation around the y axis
 #     gamma     : rotation around the z axis (basically a 2D rotation)
-#     dx        : translation along the x axis
-#     dy        : translation along the y axis
-#     dz        : translation along the z axis (distance to the image)
+#     dx        : C along the x axis
+#     dy        : C along the y axis
+#     dz        : C along the z axis (distance to the image)
 #
 # Output:
 #     image     : the rotated image

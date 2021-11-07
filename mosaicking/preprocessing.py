@@ -13,6 +13,34 @@ def rebalance_color(img: np.ndarray, r: float, g: float, b: float):
     return (img.astype(float)*[b,g,r]).astype(np.uint8)
 
 
+def enhance_detail(img: np.ndarray):
+    return cv2.detailEnhance(img)
+
+
+def find_center(img: np.ndarray):
+    if img.ndim > 2:
+        x, y, w, h = cv2.boundingRect(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+    else:
+        x, y, w, h = cv2.boundingRect(img)
+    return int(x + w * 0.5), int(y + h * 0.5)
+
+
+def convex_mask(img: np.ndarray, src_pts: np.ndarray):
+    # Create a mask based on the convex polygon of the valid keypoints in the matched area
+    image_mask = np.zeros_like(img)
+    poly = cv2.convexHull(src_pts).squeeze().astype(np.int32)
+    cv2.fillPoly(image_mask, pts=[poly, ], color=(255, 255, 255))
+    return image_mask[:, :, 0]
+
+
+def crop_to_valid_area(img: np.ndarray):
+    if img.ndim > 2:
+        rect = cv2.boundingRect(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+    else:
+        rect = cv2.boundingRect(img)
+    return img[rect[1]:rect[1]+rect[3],rect[0]:rect[0]+rect[2]], rect
+
+
 # Color Correction
 def fix_color(img: np.ndarray, percent: float=0.8):
     img = img_as_ubyte(img)

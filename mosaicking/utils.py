@@ -1,6 +1,15 @@
 import cv2
 import os
 import pandas as pd
+import numpy as np
+
+
+def prepare_frame(left: np.ndarray, right: np.ndarray, size: tuple):
+    left_size = (int(size[0]/2), int(size[1]))
+    right_size = (int(size[0]/2), int(size[1]))
+    left = cv2.resize(left, left_size)
+    right = cv2.resize(right, right_size)
+    return np.concatenate((left, right), axis=1)
 
 
 class VideoPlayer:

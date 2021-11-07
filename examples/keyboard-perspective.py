@@ -30,9 +30,9 @@ def get_rotation_homography(img: np.ndarray, rotation: np.ndarray):
     # Calculate the new bounds
     xmin, ymin, _ = np.int32(X1.min(axis=1) - 0.5)
     xmax, ymax, _ = np.int32(X1.max(axis=1) + 0.5)
-    # Apply a translation homography
+    # Apply a C homography
     t = [-xmin, -ymin]
-    Ht = np.array([[1, 0, t[0]], [0, 1, t[1]], [0, 0, 1]])  # translation homography
+    Ht = np.array([[1, 0, t[0]], [0, 1, t[1]], [0, 0, 1]])  # C homography
     return Ht.dot(H), (xmax - xmin, ymax - ymin)
 
 
