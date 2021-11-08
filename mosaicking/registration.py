@@ -40,25 +40,31 @@ def get_features(img: np.ndarray, fdet: cv2.Feature2D, mask=None):
 
 
 def get_alignment(src_pts: np.ndarray, src_shape: tuple, dst_pts: np.ndarray, dst_shape: tuple, homography: str = "similar", gradient: float = 0.0):
-    assert homography in ["similar", "affine", "perspective"], "Homography can be of type similar, affine, or perspective"
+    assert homography in ["rigid", "similar", "affine", "perspective"], "Homography can be of type similar, affine, or perspective"
     # Update the homography from current image to mosaic
-    if homography == "similar":
-        A, mask = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
-        # Remove shear effect from affine transform (according to: https://math.stackexchange.com/a/3521141)
-        sx = np.sqrt(A[0, 0]**2+A[1,0]**2)
-        theta = np.arctan2(A[1,0],A[0,0])
-        msy = A[0,1]*np.cos(theta) + A[1,1]*np.sin(theta)
-        if np.abs(np.sin(theta)) > 0:
-            sy = (msy*np.cos(theta)-A[0,1]) / np.sin(theta)
-        else:
-            sy = (A[1,1] - msy*np.sin(theta)) / np.cos(theta)
-        m = msy / sy
-        rot = np.array([[np.cos(theta), -np.sin(theta)],
-                             [np.sin(theta), np.cos(theta)]])
-        shear = np.eye(2)
-        scale = np.array([[sx, 0],
-                          [0, sy]])
-        A[:2,:2] = rot@shear@scale
+    if homography == "rigid":
+        A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
+        # Remove rotation components
+        theta = np.arctan2(A[1,0], A[0, 0])
+        s = A[0, 0] / np.cos(theta) if np.cos(theta) != 0 else A[1, 0] / np.sin(theta)
+        A[:, :2] = s * np.eye(2)
+    elif homography == "similar":
+        A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
+        # # Remove shear effect from affine transform (according to: https://math.stackexchange.com/a/3521141)
+        # sx = np.sqrt(A[0, 0]**2+A[1,0]**2)
+        # theta = np.arctan2(A[1,0],A[0,0])
+        # msy = A[0,1]*np.cos(theta) + A[1,1]*np.sin(theta)
+        # if np.abs(np.sin(theta)) > 0:
+        #     sy = (msy*np.cos(theta)-A[0,1]) / np.sin(theta)
+        # else:
+        #     sy = (A[1,1] - msy*np.sin(theta)) / np.cos(theta)
+        # m = msy / sy
+        # rot = np.array([[np.cos(theta), -np.sin(theta)],
+        #                      [np.sin(theta), np.cos(theta)]])
+        # shear = np.eye(2)
+        # scale = np.array([[sx, 0],
+        #                   [0, sy]])
+        # A[:2,:2] = rot@shear@scale
     elif homography == "affine":
         A, mask = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
     else:

@@ -68,7 +68,7 @@ def main():
     parser.add_argument("-g", "--gradientclip", type=float, default=0,
                         help="Clip the gradient of severely distorted image.")
     parser.add_argument("-f", "--fisheye", action="store_true", help="Flag to use fisheye distortion model.")
-    parser.add_argument("--homography", type=str, choices=["similar", "affine", "perspective"], default="similar", help="Type of 2D homography to perform.")
+    parser.add_argument("--homography", type=str, choices=["rigid", "similar", "affine", "perspective"], default="similar", help="Type of 2D homography to perform.")
     group = parser.add_argument_group()
     group.add_argument("--demo", action="store_true", help="Creates a video of the mosaic creation process. For demo purposes only.")
     group.add_argument("--show_demo", action="store_true", help="Display the demo while underway.")
@@ -238,7 +238,7 @@ def main():
                                                                                gradient_clip=args.gradientclip,
                                                                                mask=image_mask)
                 # Update K to center on the image
-                K[:2,-1] = [img.shape[1]/2, img.shape[0]/2]
+                # K[:2,-1] = [img.shape[1]/2, img.shape[0]/2]
                 mosaic_mask = image_mask.copy()
                 mosaic_img = img.copy()  # initialize the mosaic
                 prev_img = img.copy()  # store the image as previous
@@ -273,7 +273,11 @@ def main():
                                                                                gradient_clip=args.gradientclip,
                                                                                mask=image_mask)
                 # Update K to center on the image
-                K[:2, -1] = [img.shape[1] / 2, img.shape[0] / 2]
+                # K[:2, -1] = [img.shape[1] / 2, img.shape[0] / 2]
+                # R = Rotation.from_matrix(np.eye(3))
+                # img, image_mask, kp = transformations.apply_transform(img, K, R, np.zeros(3), kp,
+                #                                                       gradient_clip=args.gradientclip,
+                #                                                       mask=image_mask)
                 if args.show_rotation:
                     cv2.imshow("ROTATION COMPENSATION", img)
 
@@ -342,14 +346,12 @@ def main():
             warped_mask = (warped_mask == 255).astype(np.uint8) * 255
 
             # Get the previous iteration mosaic_mask in the shape of the update
-            # First construct a template in the shape of the transformed image
-            template = np.zeros_like(warped)
             # Get a one channel mask of that template
-            mosaic_mask_ = template[:, :, 0].copy()
+            mosaic_mask_ = np.zeros_like(warped_mask)
             # Insert the previous mosaic mask into the template mask
             mosaic_mask_[t[1]:mosaic_mask.shape[0] + t[1], t[0]:mosaic_mask.shape[1] + t[0]] = mosaic_mask
             # Copy the template into the mosaic placeholder
-            mosaic_img_ = template.copy()
+            mosaic_img_ = np.zeros_like(warped)
             # Insert the previous mosaic into the placeholder
             mosaic_img_[t[1]:mosaic_img.shape[0] + t[1], t[0]:mosaic_img.shape[1] + t[0]] = mosaic_img
             # Get the mask where mosaic and warped input intersect
@@ -365,9 +367,9 @@ def main():
             # update the tile_mask with the warped mask region
             mosaic_mask = cv2.bitwise_or(mosaic_mask_, warped_mask)
 
-            mosaic_img, crop = preprocessing.crop_to_valid_area(mosaic_img)
-            mosaic_mask, crop = preprocessing.crop_to_valid_area(mosaic_mask)
-            A[:2, -1] = A[:2, -1] - crop[:2]
+            # mosaic_img, crop = preprocessing.crop_to_valid_area(mosaic_img)
+            # mosaic_mask, crop = preprocessing.crop_to_valid_area(mosaic_mask)
+            # A[:2, -1] = A[:2, -1] - crop[:2]
 
             # Display the mosaic
             if args.show_mosaic:

@@ -11,8 +11,8 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
     Kinv = np.zeros((4, 3))
     Kinv[:3, :3] = np.linalg.inv(K[:3, :3]) * (K[0, 0] * K[1, 1])
     Kinv[-1, :] = [0, 0, 1]
-    #E = get_extrinsic_matrix(R, T)
-    E = np.concatenate((np.concatenate((R, T.reshape(3,1)), axis=1), [[0,0,0,1]]), axis=0)
+    E = get_extrinsic_matrix(R, T)
+    #E = np.concatenate((np.concatenate((R, T.reshape(3,1)), axis=1), [[0,0,0,1]]), axis=0)
     H = np.linalg.multi_dot([K, E, Kinv])
     # Warp a grid of points on the image plane
     xgrid = np.arange(0, width)
