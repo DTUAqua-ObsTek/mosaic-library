@@ -49,7 +49,7 @@ def get_alignment(src_pts: np.ndarray, src_shape: tuple, dst_pts: np.ndarray, ds
         s = A[0, 0] / np.cos(theta) if np.cos(theta) != 0 else A[1, 0] / np.sin(theta)
         A[:, :2] = s * np.eye(2)
     elif homography == "similar":
-        A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
+        A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts)#, method=cv2.RANSAC, ransacReprojThreshold=1)
         # # Remove shear effect from affine transform (according to: https://math.stackexchange.com/a/3521141)
         # sx = np.sqrt(A[0, 0]**2+A[1,0]**2)
         # theta = np.arctan2(A[1,0],A[0,0])
@@ -69,7 +69,7 @@ def get_alignment(src_pts: np.ndarray, src_shape: tuple, dst_pts: np.ndarray, ds
         A, mask = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
     else:
         A, mask = cv2.findHomography(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
-    A = np.concatenate((A, np.array([[0, 0, 1]])), axis=0) if A.size < 9 else A
+    A = np.concatenate((A, np.array([[0, 0, 1]])), axis=0) if A.size < 9 else A  # convert to a homogeneous form
     # Warp the image coordinates
     ugrid = np.arange(0, src_shape[1] - 1)
     vgrid = np.arange(0, src_shape[0] - 1)

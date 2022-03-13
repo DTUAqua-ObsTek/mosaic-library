@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from scipy.spatial.transform import Rotation
 import sys
+import copy
 
 
 def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, T: np.ndarray, gradient_clip: float=0.0):
@@ -11,8 +12,12 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
     Kinv = np.zeros((4, 3))
     Kinv[:3, :3] = np.linalg.inv(K[:3, :3]) * (K[0, 0] * K[1, 1])
     Kinv[-1, :] = [0, 0, 1]
+    # Get the extrinsic matrix (Camera to World)
     E = get_extrinsic_matrix(R, T)
     #E = np.concatenate((np.concatenate((R, T.reshape(3,1)), axis=1), [[0,0,0,1]]), axis=0)
+    # The homography is a set of transformations, first transform the image frame onto the camera frame
+    # Then Rotate and translate the camera frame onto the world frame
+    # Then transform back to the image frame
     H = np.linalg.multi_dot([K, E, Kinv])
     # Warp a grid of points on the image plane
     xgrid = np.arange(0, width)
@@ -62,14 +67,20 @@ def apply_transform(img: np.ndarray, K: np.ndarray, R: Rotation, T: np.ndarray, 
     if mask is None:
         mask = 255 * np.ones_like(img)[:, :, 0]
     mask_warped = cv2.warpPerspective(mask, H, (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    # Apply H to the keypoints
     pts = [k.pt for k in keypoints]
-    pts = H @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
-    pts = (pts[:2, :]/pts[-1,:]).T
+    pts = np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
+    pts = H @ pts
+    pts = (pts[:2, :]/pts[-1,:])
+    pts = pts[:2, :].T
+    kp = []
     for k, pt in zip(keypoints, pts):
-        k.pt = tuple(pt)
+        kp.append(cv2.KeyPoint(pt[0], pt[1], k.size, k.angle, k.response, k.octave, k.class_id))
+    # for k, pt in zip(keypoints, pts):
+    #     k.pt = tuple(pt)
     if scale is not None:
         img_warped, keypoints, mask_warped = apply_scale(img_warped, keypoints, scale, mask_warped)
-    return img_warped, mask_warped, keypoints
+    return img_warped, mask_warped, kp
 
 
 def apply_scale(img: np.ndarray, keypoints: list, scale: float, mask: np.ndarray=None):
@@ -89,9 +100,12 @@ def apply_scale(img: np.ndarray, keypoints: list, scale: float, mask: np.ndarray
     pts = [k.pt for k in keypoints]
     pts = S @ np.concatenate((np.array(pts), np.ones((len(pts), 1))), axis=1).T
     pts = (pts[:2, :] / pts[-1, :]).T
+    kp = []
     for k, pt in zip(keypoints, pts):
-        k.pt = tuple(pt)
-    return img, keypoints, mask
+        kp.append(cv2.KeyPoint(pt[0], pt[1], k.size, k.angle, k.response, k.octave, k.class_id))
+    # for k, pt in zip(keypoints, pts):
+    #     k.pt = tuple(pt)
+    return img, kp, mask
 
 
 def get_extrinsic_matrix(Rc: np.ndarray, C: np.ndarray, order: str = "xyz", degrees: bool=False):
