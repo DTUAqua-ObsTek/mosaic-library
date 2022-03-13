@@ -1,100 +1,186 @@
-# Mosaic-Library #
-This is a python library for manipulating images for underwater mapping applications. There are several examples to get
-you familiar with the concepts of correcting an images color balance, contrast, and lighting, applying a static rotation
-to an image to change the perspective, and combining all of these with image registration to mosaic an image.
+# mosaic-library #
+This is a python library for manipulating images for underwater mosaicking applications. Currently, this libary is 
+capable of:
+
+1. Reading input videos with the [VideoPlayer class](https://github.com/DTUAqua-ObsTek/mosaic-library/blob/f4886e378631c6e3bc91d5ca89018cff75419e03/mosaicking/utils.py#L90)
+2. Applying color, contrast, and lighting balancing as well as detail enhancement.
+3. Other image manipulations such as resizing for faster mosaicking.
+4. Image registration, such as feature detection and description, matching, and transformation estimation in pure translation, similarity, affine, and perspective classes.
+5. Infinite and finite homography transformations on imagery given extrinsic rotations and translations between the camera and a new "virtual" camera.
+6. Basic time synchronisation between camera position and rotation in the world frame with the video.
+7. Visualisation of the preprocessing, feature detection / registration, homographic transform, and mosaicking steps.
+8. Basic mosaicking map generation, with minimal memory management support (tiling).
+   
+Future Roadmap:
+
+1. Estimation of a ground plane given additional extrinsic information from the mobile camera platform. 
+2. Estimation and removal of vanishing line to reduce OutOfMemory errors due to excessive image warping.
+3. Memory management through iterative updating of mosaic tiles according to a common mosaic coordinate system.
 
 ## Getting Started ##
 
-First, install [Python 3.8.10](https://www.python.org/downloads/release/python-3810/) for your system.
+First, make sure you have installed either [Python 3.8.10](https://www.python.org/downloads/release/python-3810/) or 
+[Python 3.9](https://www.python.org/downloads/release/python-396/) for your system.
 
-(Optional): install an Integrated Development Environment, I recommend [PyCharm Community](https://www.jetbrains.com/pycharm/download)
+(Optional): install an Integrated Development Environment, for example: [PyCharm Community](https://www.jetbrains.com/pycharm/download).
 
-Download the mosaic-library from learn.inside.dtu.dk. Extract the folder somewhere convenient for you to find.
+Create and activate virtual environment ([guide here](https://www.youtube.com/watch?v=N5vscPTWKOk) for non-pycharm users).
 
-Make sure you copy down the path location of your mosaic-library folder (i.e. where this .pdf is being read from!), I will refer to this directory as $WORKSPACE from now on.
-
-### If Using PyCharm ###
-
-1. Open PyCharm
-2. Select 'Open Project'
-3. Navigate to $WORKSPACE, click open.
-4. Choose to initialize Python 3.8.10 as a new virtualenv.
-5. Open a terminal tab at the bottom of the window, type `python3 -m pip install --update pip setuptools`
-6. Install the package dependencies `python3 setup.py install`
-
-### If Using Windows (No PyCharm) ###
-
-1. Press `windows key + r`
-2. Type 'cmd' into the run dialog box and press ok.
-3. Type `python3 -m pip install --update pip setuptools`
-   *Note*: if there is an error complaining about missing python3, try python instead. Otherwise we will have to fix your system path, just ask.
-4. Change directory to your workspace by `cd $WORKSPACE`
-5. Install the package `python3 setup.py install`
-
-### If Using OSX (No PyCharm) ###
-
-1. Open a terminal (search for `Terminal` in LaunchPad)
-2. Type `python3 -m pip install --update pip setuptools`
-   *Note*: if there is an error complaining about missing python3, try python instead. Otherwise we will have to fix your system path, just ask.
-3. Change directory to your workspace by `cd $WORKSPACE`
-4. Install the package dependencies `python3 setup.py install`
-
+Install the mosaic-library package: `python -m pip install mosaic-library` (internet connection required).
 
 ## Preprocessing Images ##
 Images are essentially 3-Dimensional Tensors (Videos are 4-Dimensional), and so typical linear algebraic operations (matrix 
 multiplication, inversion, *etc.*) will work on them. Images can appear faded or have low-contrast due to underwater
 effects. Histogramming techniques can balance the color intensity between channels (color fixing), balance the overall
-light intensity of the image, or balance the contrast of the image. Three of these methods are demonstrated in color-correction.py
-to balance channels, intensity and contrast to obtain clearer pictures.
+light intensity of the image, or balance the contrast of the image. Additionally, a sharpness filter [cv2.detailEnhance](https://docs.opencv.org/4.x/df/dac/group__photo__render.html#ga0de660cb6f371a464a74c7b651415975)
+has been exposed in `mosaicking.preprocessing.enhance_detail`
 
-1. In a terminal, navigate to $WORKSPACE/examples
-2. Run `python3 color-correction.py ../images/corrections/underwater-fishes.png`
-3. Four images are shown, from left to right: Original, Color Corrected, Contrast Corrected, Lighting Corrected
-4. Press any key to quit.   
-5. Experiment with the inputs to each the fix_color, fix_light and fix_contrasts function in examples/color-correction.py.
+Example Color Correction
+```
+from mosaicking import preprocessing
+from skimage.data import astronaut
 
-**How do these parameters affect the quality of the output image?**
+img = astronaut()  # Load a good image
+img = img[:,:,[2,1,0]]               # Convert to OpenCV BGR color channel ordering (not necessary if using OpenCV to read images)
+img[:, :, -1] = 0.4 * img[:, :, -1]  # Reduce the Red channel to make the image seem underwater (Red wavelengths attenuate faster than other colors)
+
+color_balance = preprocessing.fix_color(img, 0.9)  # Apply Color balancing
+# Display the comparison
+preprocessing.cv2.imshow("astronaut (push any key to quit)",
+                         preprocessing.np.concatenate(
+                         (img, color_balance), axis=1))
+preprocessing.cv2.waitKey()
+# Cleanup
+preprocessing.cv2.destroyWindow("astronaut (push any key to quit)")
+```
 
 ## Transforming Images ##
 Applying geometric transformations to images is relatively easy. A rotation matrix, R, that specifies the roll, pitch, and yaw
-angles can rotate an about its principle axes in sequence to appear as if looked at from another position. This is useful
-for lining images up so that they match closely with each other (this is called image registration in the literature). Additionally it is useful
-to correct for perspective. If we have some idea of where the camera is relative to the image, then we can warp the image
+angles can rotate an image about its optical center in sequence to appear as if looked at from an equivalent camera from 
+a different orientation. This is useful for projecting an image onto a desired plane (such as a ground plane).
+Additionally, translation transformations can be applied to the image. This, in combination with rotation, can align images
+taken at different positions. In both situations it is essential to know the intrinsic properties of the camera in order
+to correct for changes in perspective. If we have some idea of where the camera is relative to the image, then we can warp the image
 by rotating it about the approximate camera position.
 
-This example investigates and applies a transformation to the image.
+[This example](examples/perspective-playground.py) investigates and applies extrinsic and intrinsic transformations to the image.
+See if you can make the train tracks appear parallel. To exit, press ESC with either image window active.
 
-1. In a terminal, navigate to $WORKSPACE/examples
-2. Run `python3 perspective-test.py ../images/homography/train.jpg`
+Other questions:
 
 **Why do the rails appear to vanish to a single point?**
 
 **What are we doing with the camera when we shift the perspective like this?**
 
-**Are we able to get the tracks to appear parallel (as they are in reality)?**
-
 
 ## Mosaicking ##
 Mosaicking is the process of finding correspondences between images and arranging them so that they create a larger image.
-Video can be used to incrementally expand a mosaic by adding in new tiles with each new frame. The images are preprocessed first
-to add clarity (making it easier to find matching features), then a transformation is computed between the existing mosaic
-and the new image that maximises correlation between the matched features. Then a perspective transformation (similar to
-the previous example) and translation are applied to the image (like the previous example). This is done over and over for each
-new image, and the mosaic grows.
+Videos or sequences of images can be used to incrementally expand a mosaic by adding in new tiles with each new frame. 
+The images are preprocessed first to increase clarity and sharpness (making it easier to find features), then a transformation
+is computed between the existing mosaic and the new image that maximises correlation between the matched features. 
+Then similarity, affine or perspective transformations (similar to the train example) are applied to the image.
+These steps are iterated over each new image, and the mosaic grows.
 
-1. Navigate to $WORKSPACE
-2. Run the following: `python3 simple-similarity.py images/mosaicking/GOPR0009_Trim.mp4 --save_freq=10 --alpha=0.9 --max_mosaic_size=20000 --output_directory=test --show_mosaic --scale_factor=0.5`
-3. Observe how the mosaic changes over time.
-4. Press q to quit early.
-5. The mosaic will be saved in output_mosaic.png.
+The mosaicking script has been exposed as a command (make sure you have it added to your path) as well as through the module.
+
+To see the usage:
+
+```
+python3 -m mosaicking.mosaic -h
+
+usage: mosaic.py [-h] [--output_directory OUTPUT_DIRECTORY] [--start_time START_TIME | --start_frame START_FRAME]
+                 [--finish_time FINISH_TIME | --finish_frame FINISH_FRAME] [--frame_skip FRAME_SKIP] [--orientation_file ORIENTATION_FILE]
+                 [--sync_points SYNC_POINTS SYNC_POINTS | --time_offset TIME_OFFSET] [--min_matches MIN_MATCHES] [--min_features MIN_FEATURES]
+                 [--max_warp_size MAX_WARP_SIZE [MAX_WARP_SIZE ...]] [--max_mosaic_size MAX_MOSAIC_SIZE] [--save_freq SAVE_FREQ] [--scale_factor SCALE_FACTOR]
+                 [--alpha ALPHA] [--show_rotation] [--show_mosaic] [--show_preprocessing] [--fix_color] [--fix_contrast] [--fix_light] [-c CALIBRATION]
+                 [-k INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC] [-d DISTORTION [DISTORTION ...]] [-x XROTATION]
+                 [-y YROTATION] [-z ZROTATION] [-g GRADIENTCLIP] [-f] [--homography {rigid,similar,affine,perspective}] [--demo] [--show_demo]
+                 [--features {ORB,SIFT,SURF,BRISK,KAZE,ALL} [{ORB,SIFT,SURF,BRISK,KAZE,ALL} ...]] [--show_matches] [--inliers_roi]
+                 video
+
+positional arguments:
+  video                 Path to video file.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --output_directory OUTPUT_DIRECTORY
+                        Path to directory where output mosaics are to be saved. Default is invokation path.
+  --start_time START_TIME
+                        Time (secs) to start from.
+  --start_frame START_FRAME
+                        Frame number to start from.
+  --finish_time FINISH_TIME
+                        Time (secs) to finish at.
+  --finish_frame FINISH_FRAME
+                        Frame number to finish at.
+  --frame_skip FRAME_SKIP
+                        Number of frames to skip between each mosaic update.
+  --orientation_file ORIENTATION_FILE
+                        Path to .csv file containing orientation measurements that transform world to the camera frame.
+  --sync_points SYNC_POINTS SYNC_POINTS
+                        Time points (sec) where video and orientation file are in sync, used to calculate time offset between video and timestamps in
+                        orientation file.
+  --time_offset TIME_OFFSET
+                        Time offset (sec) between video and orientation file timestamps, used for synchronization.
+  --min_matches MIN_MATCHES
+                        Minimum number of matches to proceed with registration.
+  --min_features MIN_FEATURES
+                        Minimum number of features to detect in an image.
+  --max_warp_size MAX_WARP_SIZE [MAX_WARP_SIZE ...]
+                        Maximum size of warped image (used to prevent OOM errors), if 1 argument given then image is clipped to square, if 2 then the order is
+                        height, width.
+  --max_mosaic_size MAX_MOSAIC_SIZE
+                        Largest allowable size (width or height) for mosaic. Creates a new tile if it gets bigger.
+  --save_freq SAVE_FREQ
+                        Save frequency for output mosaic (if less than 1 then output saves at exit).
+  --scale_factor SCALE_FACTOR
+                        Scale the input image with constant aspect ratio.
+  --alpha ALPHA         Alpha blending scalar for merging new frames into mosaic.
+  --show_rotation       Flag to display the rotation compensation using rotation data.
+  --show_mosaic         Flag to display the mosaic output.
+  --show_preprocessing  Flag to display the preprocessed image
+  --fix_color           Flag to preprocess image for color balance.
+  --fix_contrast        Flag to preprocess image for contrast equalization.
+  --fix_light           Flag to preprocess image for lighting equalization.
+  -c CALIBRATION, --calibration CALIBRATION
+                        Path to calibration file, overrides --intrinsic and --distortion.
+  -k INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC, --intrinsic INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC INTRINSIC
+                        Space delimited list of intrinsic matrix terms, Read as K[0,0],K[0,1],K[0,2],K[1,0],K[1,1],K[1,2],K[2,0],K[2,1],K[2,2]. Overriden by
+                        calibration file if intrinsic present.
+  -d DISTORTION [DISTORTION ...], --distortion DISTORTION [DISTORTION ...]
+                        Space delimited list of distortion coefficients, Read as K1, K2, p1, p2. Overriden by calibration file if distortion present.
+  -x XROTATION, --xrotation XROTATION
+                        Rotation around image plane's x axis (radians).
+  -y YROTATION, --yrotation YROTATION
+                        Rotation around image plane's y axis (radians).
+  -z ZROTATION, --zrotation ZROTATION
+                        Rotation around image plane's z axis (radians).
+  -g GRADIENTCLIP, --gradientclip GRADIENTCLIP
+                        Clip the gradient of severely distorted image.
+  -f, --fisheye         Flag to use fisheye distortion model.
+  --homography {rigid,similar,affine,perspective}
+                        Type of 2D homography to perform.
+  --features {ORB,SIFT,SURF,BRISK,KAZE,ALL} [{ORB,SIFT,SURF,BRISK,KAZE,ALL} ...]
+                        Set of features to use in registration.
+  --show_matches        Display the matches.
+  --inliers_roi         Only allow the convex hull of the inlier points to be displayed.
+
+  --demo                Creates a video of the mosaic creation process. For demo purposes only.
+  --show_demo           Display the demo while underway.
+```
+
+Try running the mosaicking.mosaic script on a video you've taken with your phone or otherwise.
 
 **Do any parts of the mosaic appear poorer in quality than others? If so, why?**
 
-Control of the camera is particularly important as the new image will become smaller and smaller with respect to the mosaic
-as the camera moves "into" or "through" the mosaic. Eventually the number of common features between the mosaic and the image
+It is important the camera's view is mostly occupied by a scene that lies
+on a plane (like the seabottom). Control of the camera to keep the ground plane 
+in sight is particularly important as the new image will become smaller and smaller with respect to the mosaic
+as the camera moves "into" or "through" the mosaic.  Eventually the number of common features between the mosaic and the image
 will diminish to the point where no good transformation can be found. Or the camera may view something that does not have enough
 features to estimate a transformation. Or, the mosaic size might get too big. 
-The current implementation simply just dumps the mosaic to a file (called tmp_001.png, tmp_002.png etc.) and starts a new mosaic on the latest image.
+The current implementation simply just dumps the mosaic to tiles (called tile_001.png, tmp_002.png etc.)
+and starts a new mosaic on the latest image if the memory consumption goes above a threshold.
 
 **What could be a way to reduce this diminishing matching features problem?**
 
