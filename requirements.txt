@@ -1,10 +1,10 @@
+wheel
+build
+importlib
 numpy
 scipy
 scikit-image
 imutils
-matplotlib
-PyQt5
-keyboard
 pandas
-opencv-contrib-python
-requests
+opencv-contrib-python==4.5.2.54
+pyyaml
