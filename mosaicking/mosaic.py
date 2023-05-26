@@ -1,6 +1,5 @@
 import cv2
 from cv2 import fisheye
-import argparse
 from pathlib import Path
 import sys
 import numpy as np
@@ -141,11 +140,11 @@ def main():
                 img = cv2.undistort(img, K, distCoeff)
                 image_mask = cv2.undistort(255 * np.ones_like(img), K, distCoeff)[:, :, 0]
             # Then apply color correction if specified
-            img = preprocessing.fix_color(img) if args.fix_color else img
+            img = preprocessing.imadjust(img) if args.imadjust else img
             # Then apply contrast balancing if specified
-            img = preprocessing.fix_contrast(img) if args.fix_contrast else img
+            img = preprocessing.equalize_color(img) if args.equalize_color else img
             # Then apply light balancing if specified
-            img = preprocessing.fix_light(img) if args.fix_light else img
+            img = preprocessing.equalize_luminance(img) if args.equalize_luminance else img
             # Enhance detail
             img = preprocessing.enhance_detail(img)
 

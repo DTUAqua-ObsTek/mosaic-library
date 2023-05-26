@@ -4,7 +4,9 @@ import cv2
 import os
 import pandas as pd
 import numpy as np
+import numpy.typing as npt
 from pathlib import Path
+from matplotlib import pyplot as plt
 
 
 def parse_args():
@@ -46,10 +48,10 @@ def parse_args():
                         help="Flag to display the rotation compensation using rotation data.")
     parser.add_argument("--show_mosaic", action="store_true", help="Flag to display the mosaic output.")
     parser.add_argument("--show_preprocessing", action="store_true", help="Flag to display the preprocessed image")
-    parser.add_argument("--fix_color", action="store_true", help="Flag to preprocess image for color balance.")
-    parser.add_argument("--fix_contrast", action="store_true",
+    parser.add_argument("--imadjust", action="store_true", help="Flag to preprocess image for color balance.")
+    parser.add_argument("--equalize_color", action="store_true",
                         help="Flag to preprocess image for contrast equalization.")
-    parser.add_argument("--fix_light", action="store_true", help="Flag to preprocess image for lighting equalization.")
+    parser.add_argument("--equalize_luminance", action="store_true", help="Flag to preprocess image for lighting equalization.")
     parser.add_argument("-c", "--calibration", type=str, default=None,
                         help="Path to calibration file, overrides --intrinsic and --distortion.")
     parser.add_argument("-k", "--intrinsic", nargs=9, type=float, default=None,
@@ -134,7 +136,6 @@ class VideoPlayer(cv2.VideoCapture):
         if self._finish_frame < self._start_frame:
             raise ValueError("Finishing frame is less than starting time.")
 
-
     def evaluate_stopping(self):
         """Return true if stopping conditions met."""
         return self._finish_frame <= self.get(cv2.CAP_PROP_POS_FRAMES)
@@ -168,10 +169,7 @@ class VideoPlayerIterator:
 
 
 def check_keypress(key: str):
-    press = cv2.waitKey(1)
-    if key == ord(press):
-        return True
-    return False
+    return key == cv2.waitKey(1)
 
 
 def get_starting_pos(cap: cv2.VideoCapture, args):
@@ -183,7 +181,7 @@ def get_starting_pos(cap: cv2.VideoCapture, args):
     return cap
 
 
-def evaluate_stopping(cap: cv2.VideoCapture, args):
+def evaluate_stopping(cap: cv2.VideoCapture, args: argparse.Namespace) -> bool:
     """Return true if stopping conditions met."""
     if args.finish_time:
         return cap.get(cv2.CAP_PROP_POS_MSEC) > args.finish_time*1000.0
@@ -192,9 +190,20 @@ def evaluate_stopping(cap: cv2.VideoCapture, args):
     return cap.get(cv2.CAP_PROP_FRAME_COUNT)-1 <= cap.get(cv2.CAP_PROP_POS_FRAMES)
 
 
-def load_orientations(path: os.PathLike, args):
+def load_orientations(path: os.PathLike, args: argparse.Namespace) -> pd.DataFrame:
     """Given a path containing orientations, retrieve the orientations corresponding to a time offset between video and orientation data."""
     time_offset = args.time_offset if args.time_offset else args.sync_points[1] - args.sync_points[0]
     df = pd.read_csv(str(path), index_col="timestamp")
     df.index = df.index - time_offset
     return df[~df.duplicated()]
+
+
+def plot_image_histogram(img: npt.NDArray[np.uint8], ax: plt.Axes = None) -> None:
+    if ax is None:
+        fig, ax = plt.subplots()
+    if img.ndim < 3:
+        img = img[..., None]
+    colors = ('b','g','r') if img.shape[-1] == 3 else ('k',)
+    for channel in range(img.shape[-1]):
+        hist = cv2.calcHist([img], [channel], None, [256], [0, 256])
+        ax.plot(hist, colors[channel])

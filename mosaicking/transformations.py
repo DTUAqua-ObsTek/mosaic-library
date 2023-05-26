@@ -1,8 +1,6 @@
 import numpy as np
-import cv2
 from scipy.spatial.transform import Rotation
 import sys
-import copy
 
 
 def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, T: np.ndarray, gradient_clip: float=0.0):

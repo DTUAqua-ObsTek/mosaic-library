@@ -1,10 +1,9 @@
-wheel
 build
 importlib
 numpy
-scipy
-scikit-image
-imutils
+opencv-contrib-python
+opencv-python
 pandas
-opencv-contrib-python==4.5.2.54
 pyyaml
+scipy
+wheel
