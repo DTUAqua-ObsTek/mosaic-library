@@ -37,23 +37,22 @@ Second, install [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-
 
 Install an Integrated Development Environment, such as [PyCharm Community](https://www.jetbrains.com/pycharm/download).
 
-See this tutorial for setting up a PyCharm project.
+See [this tutorial](https://www.jetbrains.com/help/pycharm/creating-empty-project.html) for setting up a PyCharm project.
 
 ### Option 2: Via command prompt / terminal ###
 
-First, open up command prompt / PowerShell (windows), or a terminal (mac / linux.)
+**NOTE: The python commands below use `python3` as the symbolic link to the python executable, 
+however your os may have mapped the `python` symbolic link to your installed python executable.
+If you get an error stating that python3 cannot be found, or if the Microsoft store appears, then use `python` instead.**
 
-Make a directory for you project: `mkdir mosaic-tutorial; cd mosaic-tutorial`
-
-Install the `virtualenv` package: `python3 -m pip install venv`
-
-Create the virtual environment: `python3 -m virtualenv venv`
-
-**Windows**: Activate the virtual environment `venv\Scripts\activate.bat`
-
-**mac / linux**: Activate the virtual environment `source venv/bin/activate`
-
-Install the mosaic-library package: `python -m pip install mosaic-library` (internet connection required).
+1. Open up command prompt / PowerShell (windows), or a terminal (mac / linux.)
+2. Make a directory for you project: `mkdir mosaic-tutorial; cd mosaic-tutorial`
+3. Install the `virtualenv` package: `python3 -m pip install venv`
+4. Create the virtual environment: `python3 -m virtualenv venv`
+5. Activate the virtual environment 
+   - **Windows**: `venv\Scripts\activate.bat`
+   - **mac / linux**: `source venv/bin/activate`
+6. Install the mosaic-library package: `python3 -m pip install mosaic-library` (internet connection required).
 
 ## Examples ##
 The examples used here are found [here](https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/examples), this 
@@ -239,7 +238,8 @@ Some questions:
 
 It is useful in image geometry to know certain properties of a camera, called the intrinsic properties. These properties
 are used to model the behaviour of projecting 3D points onto a 2D image plane for the camera. The model typically used is
-the "pinhole camera model". These properties are usually represented in the so-called "intrinsic matrix", `K`:
+the "pinhole camera model". These properties are usually represented in the so-called "intrinsic matrix", `K`. A simple
+form (no skew) for `K` is shown below:
 
 $$
 K = \begin{bmatrix}
@@ -249,8 +249,8 @@ f_x & 0 & c_x \\
 \end{bmatrix}
 $$
 
-Where $$f_x$$ and $$f_y$$ are the focal lengths in the image coordinate frame x and y directions respectively, 
-measured in pixels. $$c_x$$ and $$c_y$$ are the principle points in the image coordinate frame x and y directions respectively.
+Where $f_x$ and $f_y$ are the focal lengths in the image coordinate frame x and y directions respectively, 
+measured in pixels. $c_x$ and $c_y$ are the principle points in the image coordinate frame x and y directions respectively.
 Since focal lengths of cameras are generally reported in mm, the method for converting is as follows:
 
 $$
@@ -260,8 +260,8 @@ f_y &= \frac{f\times h}{H}
 \end{align*}
 $$
 
-Where $$f$$ is the focal length measured in mm, $$w$$ is the image width in pixels, $$W$$ is the sensor width in mm,
-$$h$$ is the image height in pixels, and $$H$$ is the sensor height in mm. Information on a variety of commonly used
+Where $f$ is the focal length measured in mm, $w$ is the image width in pixels, $W$ is the sensor width in mm,
+$h$ is the image height in pixels, and $H$ is the sensor height in mm. Information on a variety of commonly used
 sensors are available [here](https://en.wikipedia.org/wiki/Image_sensor_format#Table_of_sensor_formats_and_sizes).
 
 Additionally, the effects of the lens can distort the path of light making objects that should be straight appear curved.
@@ -276,4 +276,6 @@ To calibrate a camera using this tool, you will need the following:
 3. The length of the side of the checkerboard squares in mm.
 4. A video recording (about 60 - 90 seconds) taken by your camera of the checkerboard sheet at a variety of positions, orientations and scales, all interior corners need to be visible for a given video frame to have valid calibration data. Full coverage of the camera's field of view is necessary to estimate distortion coefficients properly.
 
-Run the calibration tool as follows: `calibration.py --cb_pattern number_of_cols number_of_rows --square_size side_length_mm --reduction_fraction 0.25 --model radtan path/to/your/calibration/video.mp4`
+Run the calibration tool as follows: `calibration.py --cb_pattern number_of_cols number_of_rows --square_size side_length_mm --reduction_fraction 0.25 --model radtan path/to/your/calibration/video.mp4 output/calibration/path.json`
+
+The outputted calibration `K` and `D` matrices will be located in the `.json` file.
