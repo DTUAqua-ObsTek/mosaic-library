@@ -45,7 +45,9 @@ First, open up command prompt / PowerShell (windows), or a terminal (mac / linux
 
 Make a directory for you project: `mkdir mosaic-tutorial; cd mosaic-tutorial`
 
-Create the virtual environment: `python -m venv venv`
+Install the `virtualenv` package: `python3 -m pip install venv`
+
+Create the virtual environment: `python3 -m virtualenv venv`
 
 **Windows**: Activate the virtual environment `venv\Scripts\activate.bat`
 
@@ -55,7 +57,8 @@ Install the mosaic-library package: `python -m pip install mosaic-library` (inte
 
 ## Examples ##
 The examples used here are found [here](https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/examples), this 
-section assumes you have copied these scripts into `mosaic-tutorial/examples`.
+section assumes you have copied these scripts into `mosaic-tutorial/examples`. The data used to generate the images below
+come from [here](https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/data).
 
 ### Preprocessing Images ###
 Images are essentially 3-Dimensional Tensors (Videos are 4-Dimensional), and so typical linear algebraic operations (matrix 
@@ -79,7 +82,8 @@ to correct for changes in perspective. If we have some idea of where the camera 
 by rotating it about the approximate camera position.
 
 The [perspective-playground.py](examples/perspective-playground.py) example investigates and applies extrinsic and intrinsic transformations to the image.
-See if you can make the train tracks appear parallel. To exit, press ESC or close the window.
+See if you can make the train tracks appear parallel. Run the program with `python examples/perspective-playground.py path/to/your/image.jpg`.
+To exit, press ESC or close the window.
 
 Some questions:
 
@@ -100,6 +104,7 @@ The process of identifying common features in two or more images and then estima
 3. Transformation estimation: use a linear transformation model (such as affine or perspective homography), and search through model parameters that sufficiently explain the transformation of matched features in one image to the matched features in the second.
 
 [registration-playground.py](examples/registration-playground.py) performs these steps using functions defined in [mosaicking.registration](mosaicking/registration.py).
+Run the program like so `python examples/registration-playground.py path/to/image1.png path/to/image2.png`.
 
 ![Image Pair](assets/images/image_pairs.png)
 ![Matched Features](assets/images/matched_features.png)
@@ -118,7 +123,7 @@ The mosaicking script has been exposed as a command (make sure you have it added
 To see the usage:
 
 ```
-python3 -m mosaicking.mosaic -h
+mosaic.py -h
 
 usage: mosaic.py [-h] [--output_directory OUTPUT_DIRECTORY] [--start_time START_TIME | --start_frame START_FRAME]
                  [--finish_time FINISH_TIME | --finish_frame FINISH_FRAME] [--frame_skip FRAME_SKIP]
@@ -217,7 +222,7 @@ and starts a new mosaic if any of the mentioned issues occur.
 
 ![Mosaicking Result](assets/images/mosaic-output.png)
 
-### Activities ###
+#### Activities ####
 1. Create your own video and see how large a mosaic you can create (substitute your video path in for the one given in the instructions).
 2. What kind of camera control and survey works best?
 3. Apart from color, contrast and lighting transforms, are there any geometric transformations that we could apply to get better results?
@@ -229,3 +234,46 @@ Some questions:
 **What happens when the camera passes over something that is not co-planar and quite large (for examples, a large boulder)?**
 
 **What happens when a fish or other moving objects comes into view?**
+
+### Calibration ###
+
+It is useful in image geometry to know certain properties of a camera, called the intrinsic properties. These properties
+are used to model the behaviour of projecting 3D points onto a 2D image plane for the camera. The model typically used is
+the "pinhole camera model". These properties are usually represented in the so-called "intrinsic matrix", `K`:
+
+$$
+K = \begin{bmatrix}
+f_x & 0 & c_x \\
+0 & f_y & c_y \\
+0 & 0 & 1
+\end{bmatrix}
+$$
+
+Where $$f_x$$ and $$f_y$$ are the focal lengths in the image coordinate frame x and y directions respectively, 
+measured in pixels. $$c_x$$ and $$c_y$$ are the principle points in the image coordinate frame x and y directions respectively.
+Since focal lengths of cameras are generally reported in mm, the method for converting is as follows:
+
+$$
+\begin{align*}
+f_x &= \frac{f\times w}{W} \\
+f_y &= \frac{f\times h}{H}
+\end{align*}
+$$
+
+Where $$f$$ is the focal length measured in mm, $$w$$ is the image width in pixels, $$W$$ is the sensor width in mm,
+$$h$$ is the image height in pixels, and $$H$$ is the sensor height in mm. Information on a variety of commonly used
+sensors are available [here](https://en.wikipedia.org/wiki/Image_sensor_format#Table_of_sensor_formats_and_sizes).
+
+Additionally, the effects of the lens can distort the path of light making objects that should be straight appear curved.
+These distortion effects can be modelled, and the model parameters are usually referred to as "distortion coefficients",
+`D`. The number of coefficients depends on the model selected.
+
+`calibration.py` provides an implementation of OpenCV's [calibrateCamera](https://docs.opencv.org/4.7.0/d9/d0c/group__calib3d.html#ga3207604e4b1a1758aa66acb6ed5aa65d).
+To calibrate a camera using this tool, you will need the following:
+
+1. A camera calibration checkerboard sheet mounted to a stiff plate (see [here](https://markhedleyjones.com/projects/calibration-checkerboard-collection))
+2. The number of inner corner vertices (i.e. where the corner of a blacksquare touches the corner of another black square) of the checkerboard (rows and columns)
+3. The length of the side of the checkerboard squares in mm.
+4. A video recording (about 60 - 90 seconds) taken by your camera of the checkerboard sheet at a variety of positions, orientations and scales, all interior corners need to be visible for a given video frame to have valid calibration data. Full coverage of the camera's field of view is necessary to estimate distortion coefficients properly.
+
+Run the calibration tool as follows: `calibration.py --cb_pattern number_of_cols number_of_rows --square_size side_length_mm --reduction_fraction 0.25 --model radtan path/to/your/calibration/video.mp4`
