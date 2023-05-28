@@ -203,6 +203,7 @@ class ProcessingViewer:
             # Show the image
             cv2.imshow("display", np.concatenate((self._img, img), axis=1))
             k = cv2.waitKey(1)
+        cv2.destroyWindow("display")
 
 
 def main():
