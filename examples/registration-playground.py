@@ -1,5 +1,4 @@
-import mosaicking.transformations
-from mosaicking import registration
+from mosaicking import registration, transformations
 import argparse
 import cv2
 from pathlib import Path
@@ -54,7 +53,7 @@ def main():
             is_valid, matches = registration.get_matches(descriptors_src, descriptors_dst, matcher, 50)
             tmp = np.zeros_like(imgs[src_idx])
             src_pts, dst_pts = registration.get_match_points(keypoints_src, keypoints_dst, matches)
-            M, xbounds, ybounds = mosaicking.transformations.get_alignment(src_pts, imgs[src_idx].shape[:2], dst_pts, imgs[i + src_idx + 1].shape[:2], 'perspective')
+            M, xbounds, ybounds = transformations.get_alignment(src_pts, imgs[src_idx].shape[:2], dst_pts, imgs[i + src_idx + 1].shape[:2], 'perspective')
             imgA = add_inner_border(imgs[src_idx], 5, (0, 255, 0))
             imgB = add_inner_border(imgs[i + src_idx + 1], 5, (0, 0, 255))
             img_pairs.append(np.concatenate((imgA, imgB), axis=1))
