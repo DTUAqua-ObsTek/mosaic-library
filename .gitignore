@@ -137,11 +137,8 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Virtual environment
-venv/
-
 # PyCharm Environment
-.idea
+.idea/
 
 # Output dir
 outputs
