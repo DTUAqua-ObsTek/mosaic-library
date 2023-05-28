@@ -7,7 +7,7 @@ from numbers import Number
 
 # Image Pre-processing Module
 # Constant aspect ratio scaling
-def const_ar_scale(img: NDArray[np.uint8], scaling: float):
+def const_ar_scale(img: NDArray[np.uint8], scaling: float) -> NDArray[np.uint8]:
     if scaling == 1.0:
         return img
     if scaling > 1.0:
@@ -16,12 +16,13 @@ def const_ar_scale(img: NDArray[np.uint8], scaling: float):
         return cv2.resize(img, (0, 0), fx=scaling, fy=scaling, interpolation=cv2.INTER_AREA)
 
 
-def rebalance_color(img: NDArray[np.uint8], r: float, g: float, b: float):
-    assert img.ndim == 3, f"img should have 3 dimensions, got {img.ndim}"
+def rebalance_color(img: NDArray[np.uint8], r: float, g: float, b: float) -> NDArray[np.uint8]:
+    if img.ndim != 3:
+        raise ValueError(f"img should have 3 dimensions, got {img.ndim}")
     return np.clip(img.astype(float)*[b, g, r], 0, 255).astype(np.uint8)
 
 
-def enhance_detail(img: NDArray[np.uint8]):
+def enhance_detail(img: NDArray[np.uint8]) -> NDArray[np.uint8]:
     """
     Apply OpenCV's detailEnhance on input image.
     """
@@ -40,7 +41,7 @@ def find_center(img: np.ndarray) -> Tuple[int, int]:
     return int(x + w * 0.5), int(y + h * 0.5)
 
 
-def convex_mask(img: np.ndarray, src_pts: np.ndarray):
+def convex_mask(img: np.ndarray, src_pts: np.ndarray) -> NDArray[np.uint8]:
     # Create a mask based on the convex polygon of the valid keypoints in the matched area
     image_mask = np.zeros_like(img)
     poly = cv2.convexHull(src_pts).squeeze().astype(np.int32)
@@ -48,7 +49,7 @@ def convex_mask(img: np.ndarray, src_pts: np.ndarray):
     return image_mask[:, :, 0]
 
 
-def crop_to_valid_area(img: np.ndarray):
+def crop_to_valid_area(img: np.ndarray) -> Tuple[NDArray[np.uint8], NDArray[np.uint8]]:
     if img.ndim > 2:
         rect = cv2.boundingRect(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
     else:
@@ -136,7 +137,7 @@ def unsharpen_image(image: NDArray[np.uint8], kernel_size: Tuple[int, ...], sigm
     return image - cv2.GaussianBlur(image, kernel_size, sigma) + image
 
 
-def sharpen_image(image: np.ndarray) -> np.ndarray:
+def sharpen_image(image: NDArray[np.uint8]) -> NDArray[np.uint8]:
     # Define the sharpening kernel
     kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
 

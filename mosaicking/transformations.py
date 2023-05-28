@@ -1,9 +1,12 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 import sys
+from numpy import typing as npt
+from typing import Tuple, Sequence, List
+import cv2
 
 
-def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, T: np.ndarray, gradient_clip: float=0.0):
+def calculate_homography(K: npt.NDArray[float], width: int, height: int, R: npt.NDArray[float], T: npt.NDArray[float], gradient_clip: float=0.0) -> Tuple[npt.NDArray[float], Tuple[int, int], Tuple[int, int]]:
     if K.shape[1] < 4:
         K = np.concatenate((K, np.zeros((3, 1))), axis=1)
     # Calculate the inverse of K
@@ -49,7 +52,7 @@ def calculate_homography(K: np.ndarray, width: int, height: int, R: np.ndarray, 
     return H, (xmin, xmax), (ymin, ymax)
 
 
-def apply_transform(img: np.ndarray, K: np.ndarray, R: Rotation, T: np.ndarray, keypoints: list, scale: float = None, mask: np.ndarray = None, gradient_clip: float = 0.0):
+def apply_transform(img: npt.NDArray[np.uint8], K: npt.NDArray[float], R: Rotation, T: npt.NDArray[float], keypoints: Sequence[cv2.KeyPoint], scale: float = None, mask: npt.NDArray[np.uint8] = None, gradient_clip: float = 0.0) -> Tuple[npt.NDArray[np.uint8], List[cv2.KeyPoint], npt.NDArray[np.uint8]]:
     """
     img: input image
     K: camera calibration matrix
@@ -81,7 +84,7 @@ def apply_transform(img: np.ndarray, K: np.ndarray, R: Rotation, T: np.ndarray, 
     return img_warped, mask_warped, kp
 
 
-def apply_scale(img: np.ndarray, keypoints: list, scale: float, mask: np.ndarray=None):
+def apply_scale(img: npt.NDArray[np.uint8], keypoints: Sequence[cv2.KeyPoint], scale: float, mask: npt.NDArray[np.uint8] = None) -> Tuple[npt.NDArray[np.uint8], List[cv2.KeyPoint], npt.NDArray[np.uint8]]:
     if scale == 1.0:
         return img, keypoints, mask
     if scale < 1:
@@ -106,7 +109,7 @@ def apply_scale(img: np.ndarray, keypoints: list, scale: float, mask: np.ndarray
     return img, kp, mask
 
 
-def get_extrinsic_matrix(Rc: np.ndarray, C: np.ndarray, order: str = "xyz", degrees: bool=False):
+def get_extrinsic_matrix(Rc: npt.NDArray[float], C: npt.NDArray[float], order: str = "xyz", degrees: bool=False) -> npt.NDArray[float]:
     """
     Converts a rotation from world to camera and C from world to camera into the correct extrinsic form (camera to world).
     @param Rc: Rotation from world frame to camera frame, can be a size 3 euler angle vector, quaternion (wxyz) or rotation matrix.
@@ -134,7 +137,7 @@ def get_extrinsic_matrix(Rc: np.ndarray, C: np.ndarray, order: str = "xyz", degr
 
 ## euler rotation methods
 # Matrix for Yaw-rotation about the Z-axis
-def R_z(psi, degrees=False):
+def R_z(psi: float, degrees=False) -> npt.NDArray[float]:
     psi = psi * np.pi / 180 if degrees else psi
     R = np.array([[np.cos(psi), -np.sin(psi), 0, 0],
                    [np.sin(psi), np.cos(psi), 0, 0],
@@ -144,7 +147,7 @@ def R_z(psi, degrees=False):
 
 
 # Matrix for Pitch-rotation about the Y-axis
-def R_y(theta, degrees=False):
+def R_y(theta: float, degrees=False) -> npt.NDArray[float]:
     theta = theta * np.pi / 180 if degrees else theta
     R = np.array([[np.cos(theta), 0, np.sin(theta), 0],
                    [0, 1, 0, 0],
@@ -154,7 +157,7 @@ def R_y(theta, degrees=False):
 
 
 # Matrix for Roll-rotation about the X-axis
-def R_x(phi, degrees=False):
+def R_x(phi: float, degrees=False) -> npt.NDArray[float]:
     phi = phi*np.pi/180 if degrees else phi
     R = np.array([[1, 0, 0, 0],
                    [0, np.cos(phi), -np.sin(phi), 0],
@@ -163,11 +166,11 @@ def R_x(phi, degrees=False):
     return R
 
 
-def euler_rotation(phi, theta, psi, degrees=False):
+def euler_rotation(phi: float, theta: float, psi: float, degrees=False) -> npt.NDArray[float]:
     return np.linalg.multi_dot([R_x(phi, degrees), R_y(theta, degrees), R_z(psi, degrees)])
 
 
-def euler_affine_rotate(img: np.ndarray, euler: np.array, degrees: bool=False):
+def euler_affine_rotate(img: npt.NDArray[np.uint8], euler: npt.NDArray[float], degrees: bool=False) -> npt.NDArray[np.uint8]:
     """img: numpy array image
     euler: numpy array euler angles in Yaw, Pitch, Roll order"""
     if degrees:
@@ -188,7 +191,7 @@ def euler_affine_rotate(img: np.ndarray, euler: np.array, degrees: bool=False):
     return img_dst
 
 
-def euler_perspective_rotate(img: np.ndarray, euler: np.array, degrees: bool=False):
+def euler_perspective_rotate(img: npt.NDArray[np.uint8], euler: npt.NDArray[float], degrees: bool=False) -> npt.NDArray[np.uint8]:
     """img: numpy array image
     euler: numpy array euler angles in Yaw, Pitch, Roll order"""
     if degrees:
@@ -217,7 +220,7 @@ def euler_perspective_rotate(img: np.ndarray, euler: np.array, degrees: bool=Fal
     return img_dst
 
 ## Bird View method- get a top down view of the frames
-def bird_view(image, pitch=45):
+def bird_view(image: npt.NDArray[np.uint8], pitch: float = 45) -> npt.NDArray[np.uint8]:
     ## Crop image
 
     IMAGE_H = image.shape[0]
@@ -255,123 +258,88 @@ def bird_view(image, pitch=45):
     return warped_img
 
 
-import numpy as np
-import cv2
+def get_origin_direction(E: npt.NDArray[float]) -> Tuple[npt.NDArray[float], ...]:
+    """
+    This function accepts a 4x4 camera extrinsic matrix, E, and returns the camera's origin and
+    direction vector (which points towards the scene from the camera origin).
+    """
+
+    # Extract the rotation matrix and translation vector
+    R = E[:3, :3]
+    t = E[:3, 3]
+
+    # The camera's position in world coordinates is the negative translation vector
+    origin = -R.T @ t
+
+    # The camera's direction is the third column of the rotation matrix
+    direction = R[:, 2]
+
+    return origin, direction
 
 
-# Usage:
-#     Change main function with ideal arguments
-#     Then
-#     from image_tranformer import ImageTransformer
-#
-# Parameters:
-#     image_path: the path of image that you want rotated
-#     shape     : the ideal shape of input image, None for original size.
-#     theta     : rotation around the x axis
-#     phi       : rotation around the y axis
-#     gamma     : rotation around the z axis (basically a 2D rotation)
-#     dx        : C along the x axis
-#     dy        : C along the y axis
-#     dz        : C along the z axis (distance to the image)
-#
-# Output:
-#     image     : the rotated image
-#
-# Reference:
-#     1.        : http://stackoverflow.com/questions/17087446/how-to-calculate-perspective-transform-for-opencv-from-rotation-angles
-#     2.        : http://jepsonsblog.blogspot.tw/2012/11/rotation-in-3d-using-opencvs.html
+def get_alignment(src_pts: npt.NDArray[float], src_shape: Tuple[int, int], dst_pts: npt.NDArray[float], dst_shape: Tuple[int, int], homography: str = "similar", gradient: float = 0.0) -> Tuple[npt.NDArray[float], Tuple[int, int], Tuple[int, int]]:
+    assert homography in ["rigid", "similar", "affine", "perspective"], "Homography can be of type similar, affine, or perspective"
+    # Update the homography from current image to mosaic
+    if homography == "rigid":
+        A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
+        # Remove rotation components
+        theta = np.arctan2(A[1,0], A[0, 0])
+        s = A[0, 0] / np.cos(theta) if np.cos(theta) != 0 else A[1, 0] / np.sin(theta)
+        A[:, :2] = s * np.eye(2)
+    elif homography == "similar":
+        A, mask = cv2.estimateAffinePartial2D(src_pts, dst_pts)#, method=cv2.RANSAC, ransacReprojThreshold=1)
+        # # Remove shear effect from affine transform (according to: https://math.stackexchange.com/a/3521141)
+        # sx = np.sqrt(A[0, 0]**2+A[1,0]**2)
+        # theta = np.arctan2(A[1,0],A[0,0])
+        # msy = A[0,1]*np.cos(theta) + A[1,1]*np.sin(theta)
+        # if np.abs(np.sin(theta)) > 0:
+        #     sy = (msy*np.cos(theta)-A[0,1]) / np.sin(theta)
+        # else:
+        #     sy = (A[1,1] - msy*np.sin(theta)) / np.cos(theta)
+        # m = msy / sy
+        # rot = np.array([[np.cos(theta), -np.sin(theta)],
+        #                      [np.sin(theta), np.cos(theta)]])
+        # shear = np.eye(2)
+        # scale = np.array([[sx, 0],
+        #                   [0, sy]])
+        # A[:2,:2] = rot@shear@scale
+    elif homography == "affine":
+        A, mask = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
+    elif homography == "perspective":
+        A, mask = cv2.findHomography(src_pts, dst_pts, method=cv2.RANSAC, ransacReprojThreshold=1)
+    else:
+        raise ValueError(f'homography argument not supported, choose from {["rigid", "similar", "affine", "perspective"]}')
+    A = np.concatenate((A, np.array([[0, 0, 1]])), axis=0) if A.size < 9 else A  # convert to a homogeneous form
 
-class ImageTransformer(object):
-    """ Perspective transformation class for image
-        with shape (height, width, #channels) """
+    # Warp the image coordinates
+    u_idx, v_idx = np.indices(tuple(s - 1 for s in src_shape[1::-1]), float)
+    grid_dst = np.stack((u_idx, v_idx, np.ones_like(u_idx)), axis=2).reshape((-1, 1, 3))
+    warp_grid_dst = A @ grid_dst.squeeze().T
+    warp_grid_dst = warp_grid_dst[:2, :] / warp_grid_dst[-1, :]
 
-    def __init__(self, image: np.ndarray):
-        self.image = image
-        self.height = self.image.shape[0]
-        self.width = self.image.shape[1]
-        self.num_channels = self.image.shape[2]
-
-    """ Wrapper of Rotating a Image """
-
-    def rotate_along_axis(self, theta: float=0, phi: float=0, gamma: float=0, dx: float=0, dy: float=0, dz: float=0, degrees: bool=False):
-        # Get radius of rotation along 3 axes
-        if degrees:
-            rtheta = np.deg2rad(theta)
-            rphi = np.deg2rad(phi)
-            rgamma = np.deg2rad(gamma)
+    if gradient > 0:
+        # Compute the gradient of the transformed coordinates
+        grad_x = cv2.Sobel(warp_grid_dst.T[..., 0], cv2.CV_64F, 1, 0, ksize=5)
+        grad_y = cv2.Sobel(warp_grid_dst.T[..., 1], cv2.CV_64F, 0, 1, ksize=5)
+        # Compute the norm of the gradient
+        grad_norm = np.sqrt(grad_x ** 2 + grad_y ** 2)
+        idx = (grad_norm < gradient).squeeze()
+        if not idx.any():
+            sys.stderr.write("WARNING: Gradient Explosion. Is the Image Rapidly Zooming In/Out? Gradient clipping is suppressed to allow continuity, consider increasing gradient clip argument.\n")
         else:
-            rtheta = theta
-            rphi = phi
-            rgamma = gamma
+            warp_grid_dst = warp_grid_dst[:, idx]
 
-        # Get ideal focal length on z axis
-        # NOTE: Change this section to other axis if needed
-        d = np.sqrt(self.height ** 2 + self.width ** 2)
-        self.focal = d / (2 * np.sin(rgamma) if np.sin(rgamma) != 0 else 1)
-        dz = self.focal
+    # Get the corners of the mosaic image in homogeneous coords (x,y,w=1)
+    dst_crn = np.array([[0, dst_shape[1], dst_shape[1], 0],
+                        [0, 0, dst_shape[0], dst_shape[0]]], float)
 
-        # Get projection matrix
-        mat = self.get_M(rtheta, rphi, rgamma, dx, dy, dz)
+    # Concatenate the mosaic and warped corner coordinates
+    pts = np.concatenate([dst_crn, warp_grid_dst], axis=1)
 
-        corners = np.array([[[0, 0],
-                             [self.width, 0],
-                             [self.width, self.height],
-                             [0, self.height]]], dtype="float32")
+    # Round to pixel centers
+    xmin, ymin = np.int32(pts.min(axis=1) + 0.5)
+    xmax, ymax = np.int32(pts.max(axis=1) + 0.5)
 
-        dst_corners = cv2.perspectiveTransform(corners, mat)
-        bx, by, bwidth, bheight = cv2.boundingRect(dst_corners)
-        t = np.array([[1, 0, -bx],
-                      [0, 1, -by],
-                      [0, 0, 1]])
-
-        mat = t.dot(mat)
-        img = cv2.warpPerspective(self.image.copy(), mat, (bwidth, bheight))
-        return img
-        return cv2.warpPerspective(self.image.copy(), mat, (self.width, self.height))
-
-    """ Get Perspective Projection Matrix """
-
-    def get_M(self, theta, phi, gamma, dx, dy, dz):
-        w = self.width
-        h = self.height
-        f = self.focal
-
-        # Projection 2D -> 3D matrix
-        A1 = np.array([[1, 0, -w / 2],
-                       [0, 1, -h / 2],
-                       [0, 0, 1],
-                       [0, 0, 1]])
-
-        # Rotation matrices around the X, Y, and Z axis
-        RX = np.array([[1, 0, 0, 0],
-                       [0, np.cos(theta), -np.sin(theta), 0],
-                       [0, np.sin(theta), np.cos(theta), 0],
-                       [0, 0, 0, 1]])
-
-        RY = np.array([[np.cos(phi), 0, -np.sin(phi), 0],
-                       [0, 1, 0, 0],
-                       [np.sin(phi), 0, np.cos(phi), 0],
-                       [0, 0, 0, 1]])
-
-        RZ = np.array([[np.cos(gamma), -np.sin(gamma), 0, 0],
-                       [np.sin(gamma), np.cos(gamma), 0, 0],
-                       [0, 0, 1, 0],
-                       [0, 0, 0, 1]])
-
-        # Composed rotation matrix with (RX, RY, RZ)
-        R = np.dot(np.dot(RX, RY), RZ)
-
-        # Translation matrix
-        T = np.array([[1, 0, 0, dx],
-                      [0, 1, 0, dy],
-                      [0, 0, 1, dz],
-                      [0, 0, 0, 1]])
-
-        # Projection 3D -> 2D matrix
-        A2 = np.array([[f, 0, w / 2, 0],
-                       [0, f, h / 2, 0],
-                       [0, 0, 1, 0]])
-
-        # Final transformation matrix
-        return np.dot(A2, np.dot(T, np.dot(R, A1)))
-
+    t = [-xmin, -ymin]  # C of the upper left corner of the transformed image
+    A[:2, -1] = A[:2, -1] + t  # C homography
+    return A, (xmin, xmax), (ymin, ymax)

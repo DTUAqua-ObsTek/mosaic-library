@@ -5,6 +5,8 @@ import sys
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Rotation
+
+import mosaicking.transformations
 from mosaicking import preprocessing, utils, transformations, registration
 from itertools import chain
 import yaml
@@ -279,8 +281,8 @@ def main():
                 #  A way to address this is to mask out the components of the image that do not intersect with the ground plane.
                 #  We would need to estimate the ground plane, and compute the intersection of camera rays with this plane.
                 #  If they intersect, then the pixel that the ray goes through needs to be preserved, others are discarded.
-                A, xbounds, ybounds = registration.get_alignment(src_pts, img.shape[:2], dst_pts, mosaic_img.shape[:2],
-                                                                 homography=args.homography, gradient=args.gradientclip)
+                A, xbounds, ybounds = mosaicking.transformations.get_alignment(src_pts, img.shape[:2], dst_pts, mosaic_img.shape[:2],
+                                                                               homography=args.homography, gradient=args.gradientclip)
                 # Get the C of the top left corner of the warped image to be inserted
                 t = [-min(xbounds), -min(ybounds)]
 
@@ -367,9 +369,8 @@ def main():
                     counter = 0
                     fpath = output_path.joinpath("current_mosaic.png")
                     cv2.imwrite(str(fpath), mosaic_img)
-                if key == ord("q"):
-                    sys.stdout.write("Quitting.\n")
-                    break
+                if key == ord("q") or key & 0xff == 27:
+                    raise KeyboardInterrupt
     except Exception as err:
         # Some strange error has occurred, write out to stderr, cleanup and rethrow the error
         sys.stderr.write("\nPipeline failed at frame {}\n".format(reader.get(cv2.CAP_PROP_POS_FRAMES) + 1))
@@ -383,6 +384,8 @@ def main():
         cv2.imwrite(str(fpath), mosaic_img)
         raise err
         # The video exited properly, so cleanup and exit.
+    except KeyboardInterrupt:
+        sys.stderr.write("\nUser terminated program.\n")
     fpath = output_path.joinpath("tile_{:03d}.png".format(tile_counter))
     cv2.imwrite(str(fpath), mosaic_img)
     cv2.destroyAllWindows()
