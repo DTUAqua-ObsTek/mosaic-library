@@ -5,10 +5,11 @@ import sys
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Rotation
+import warnings
+import traceback
 
 import mosaicking.transformations
 from mosaicking import preprocessing, utils, transformations, registration
-from itertools import chain
 import yaml
 
 
@@ -24,8 +25,7 @@ def main():
         ori_path = Path(args.orientation_file).resolve()
         assert ori_path.exists(), "File not found: {}".format(str(ori_path))
         if args.sync_points is None and args.time_offset is None:
-            sys.stderr.write(
-                "Warning: No --sync_points or --time_offset argument given, assuming video and orientation file start at the same time.\n")
+            warnings.warn("No --sync_points or --time_offset argument given, assuming video and orientation file start at the same time.", UserWarning)
         orientations = utils.load_orientations(ori_path, args)
         quat_lut = interp1d(orientations.index, orientations[["qx", "qy", "qz", "qw"]], axis=0, kind='nearest')
 
@@ -33,9 +33,6 @@ def main():
     if args.demo:
         output_video = output_path.joinpath("demo.mp4")
         writer = cv2.VideoWriter(str(output_video), cv2.VideoWriter_fourcc(*"mp4v"), reader.fps, frameSize=(1920, 1080), isColor=True)
-
-    # FORMAT SPEC FOR PROGRESS
-    formatspec = "{:0" + "{}d".format(len(str(reader.n_frames))) + "}"
 
     # DISPLAY WINDOWS
     if args.show_mosaic:
@@ -64,15 +61,19 @@ def main():
             try:
                 detectors.append(cv2.xfeatures2d.SURF_create())
             except cv2.error:
-                sys.stderr.write("WARNING: Trying to use non-free SURF on OpenCV built with non-free option disabled.\n")
-        # if model == "FAST":
-        #     detectors.append(cv2.FastFeatureDetector_create())
-        # if model == "BRIEF":
-        #    detectors.append(cv2.xfeatures2d.BriefDescriptorExtractor_create())
-        # if model == "FREAK":
-        #    detectors.append(cv2.xfeatures2d.FREAK_create())
-        # if model == "GFTT":
-        #    detectors.append(cv2.GFTTDetector_create())
+                warnings.warn("Trying to use non-free SURF on OpenCV built with non-free option disabled.", UserWarning)
+        if model == "FAST":
+            warnings.warn("FAST features are not yet implemented.", UserWarning)
+            #detectors.append(cv2.FastFeatureDetector_create())
+        if model == "BRIEF":
+            warnings.warn("BRIEF features are not yet implemented.", UserWarning)
+            #detectors.append(cv2.xfeatures2d.BriefDescriptorExtractor_create())
+        if model == "FREAK":
+            warnings.warn("FREAK features are not yet implemented.", UserWarning)
+            #detectors.append(cv2.xfeatures2d.FREAK_create())
+        if model == "GFTT":
+            warnings.warn("GFTT features are not yet implemented.", UserWarning)
+            #detectors.append(cv2.GFTTDetector_create())
         if model == "BRISK":
             detectors.append(cv2.BRISK_create())
         if model == "KAZE":
@@ -104,23 +105,27 @@ def main():
         if 'camera_matrix' in calib_data:
             K = np.array(calib_data['camera_matrix']['data']).reshape((3, 3))
         else:
-            sys.stderr.write(f"WARNING: No camera_matrix found in {str(calibration_path)}\n")
-
-    print("K: {}".format(repr(K)))
-    K_scaled = K.copy()  # A copy of K that is scaled
+            warnings.warn(f"No camera_matrix found in {str(calibration_path)}", UserWarning)
 
     # Camera Lens distortion coefficients
-    distCoeff = np.zeros((4, 1), np.float64)
+    dist_coeff = np.zeros((4, 1), np.float64)
     if args.distortion is not None:
-        distCoeff = np.array([[d] for d in args.distortion], np.float64)
+        dist_coeff = np.array([[d] for d in args.distortion], np.float64)
     if args.calibration is not None:
         if 'distortion_coefficients' in calib_data:
-            distCoeff = np.array(calib_data['distortion_coefficients']['data']).reshape((calib_data['distortion_coefficients']['rows'],
-                                                                                         calib_data['distortion_coefficients']['cols']))
+            dist_coeff = np.array(calib_data['distortion_coefficients']['data']).reshape((calib_data['distortion_coefficients']['rows'],
+                                                                                          calib_data['distortion_coefficients']['cols']))
         else:
-            sys.stderr.write(f"WARNING: No distortion_coefficients found in {str(calibration_path)}\n")
+            warnings.warn(f"No distortion_coefficients found in {str(calibration_path)}", UserWarning)
+
+    K, roi = cv2.getOptimalNewCameraMatrix(K, dist_coeff, (reader.width, reader.height), 0)
+
+    print("K:", K)
+    K_scaled = K.copy()  # A copy of K that is scaled
 
     # BEGIN MAIN LOOP #
+    img = None
+    mosaic_img = None
     init = True  # Flag to init
     nomatches = False  # Prevents consecutive tile dumps due to no match
     counter = 0  # Counter to intermittently save the output mosaic
@@ -136,11 +141,11 @@ def main():
             # Preprocess the image
             # First rectify the image
             if args.fisheye:
-                img = fisheye.undistortImage(img, K, distCoeff)
-                image_mask = fisheye.undistortImage(255 * np.ones_like(img), K, distCoeff)[:, :, 0]
+                img = fisheye.undistortImage(img, K, dist_coeff)
+                image_mask = fisheye.undistortImage(255 * np.ones_like(img), K, dist_coeff)[:, :, 0]
             else:
-                img = cv2.undistort(img, K, distCoeff)
-                image_mask = cv2.undistort(255 * np.ones_like(img), K, distCoeff)[:, :, 0]
+                img = cv2.undistort(img, K, dist_coeff)
+                image_mask = cv2.undistort(255 * np.ones_like(img), K, dist_coeff)[:, :, 0]
             # Then apply color correction if specified
             img = preprocessing.imadjust(img) if args.imadjust else img
             # Then apply contrast balancing if specified
@@ -169,10 +174,8 @@ def main():
             if init:
                 sys.stdout.write("Initializing new mosaic.\n")
                 # Detect keypoints on the first frame
-                features = [registration.get_features(img, detector) for detector in detectors]
-                kp_prev = list(chain.from_iterable([f[0] for f in features]))
+                kp_prev, des_prev = registration.get_keypoints_descriptors(img, detectors)
                 num_features = len(kp_prev)
-                des_prev = [f[1] for f in features]
                 if num_features < args.min_features:
                     sys.stderr.write("Not Enough Features, Finding Good Frame.\n")
                     continue
@@ -212,10 +215,8 @@ def main():
             # We are now mosaicking
             else:
                 # Detect keypoints in the new frame
-                features = [registration.get_features(img, detector) for detector in detectors]
-                kp = list(chain.from_iterable([f[0] for f in features]))
+                kp, des = registration.get_keypoints_descriptors(img, detectors)
                 num_features = len(kp)
-                des = [f[1] for f in features]
                 if num_features < args.min_features:
                     sys.stderr.write("Not Enough Features, Skipping Frame.\n")
                     continue
@@ -371,28 +372,29 @@ def main():
                     cv2.imwrite(str(fpath), mosaic_img)
                 if key == ord("q") or key & 0xff == 27:
                     raise KeyboardInterrupt
-    except Exception as err:
-        # Some strange error has occurred, write out to stderr, cleanup and rethrow the error
-        sys.stderr.write("\nPipeline failed at frame {}\n".format(reader.get(cv2.CAP_PROP_POS_FRAMES) + 1))
-        cv2.destroyAllWindows()
-        del reader
-        if args.demo:
-            writer.release()
-        fpath = output_path.joinpath("error_frame.png")
-        cv2.imwrite(str(fpath), img)
-        fpath = output_path.joinpath("error_mosaic.png")
-        cv2.imwrite(str(fpath), mosaic_img)
-        raise err
-        # The video exited properly, so cleanup and exit.
     except KeyboardInterrupt:
         sys.stderr.write("\nUser terminated program.\n")
-    fpath = output_path.joinpath("tile_{:03d}.png".format(tile_counter))
-    cv2.imwrite(str(fpath), mosaic_img)
-    cv2.destroyAllWindows()
-    del reader
-    if args.demo:
-        writer.release()
+    except Exception:
+        # Some strange error has occurred, write out to stderr, cleanup and rethrow the error
+        sys.stderr.write("\nPipeline failed at frame {}\n".format(reader.get(cv2.CAP_PROP_POS_FRAMES) + 1))
+        traceback.print_exc()
+        fpath = output_path.joinpath("error_frame.png")
+        if img is not None:
+            cv2.imwrite(str(fpath), img)
+        fpath = output_path.joinpath("error_mosaic.png")
+        if mosaic_img is not None:
+            cv2.imwrite(str(fpath), mosaic_img)
+    finally:
+        # Cleanup actions and exit.
+        fpath = output_path.joinpath("tile_{:03d}.png".format(tile_counter))
+        if mosaic_img is not None:
+            cv2.imwrite(str(fpath), mosaic_img)
+        cv2.destroyAllWindows()
+        reader.release()
+        #del reader
+        if args.demo:
+            writer.release()
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

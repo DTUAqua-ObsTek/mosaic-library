@@ -254,10 +254,10 @@ measured in pixels. $c_x$ and $c_y$ are the principle points in the image coordi
 Since focal lengths of cameras are generally reported in mm, the method for converting is as follows:
 
 $$
-\begin{align*}
+\begin{aligned}
 f_x &= \frac{f\times w}{W} \\
 f_y &= \frac{f\times h}{H}
-\end{align*}
+\end{aligned}
 $$
 
 Where $f$ is the focal length measured in mm, $w$ is the image width in pixels, $W$ is the sensor width in mm,

@@ -140,10 +140,6 @@ class VideoPlayer(cv2.VideoCapture):
         """Return true if stopping conditions met."""
         return self._finish_frame <= self.get(cv2.CAP_PROP_POS_FRAMES)
 
-    def __del__(self):
-        print(f"Closing video {self._args.video}")
-        self.release()
-
     def __len__(self):
         return len(range(*slice(self._start_frame, self._finish_frame, self.frame_skip).indices(self.n_frames)))
 
