@@ -15,11 +15,13 @@ def main():
     parser.add_argument("calibration", type=str, help="Path to output json file containing calibration information.")
     parser.add_argument("--cb_pattern", type=int, nargs=2, default=(8, 6), help="Number of vertices (cols rows)")
     parser.add_argument("--square_size", type=float, default=30.0, help="Size of the squares in mm.")
-    parser.add_argument("--reduction_fraction", type=float, default=1.0, help="Portion of samples to keep.")
+    parser.add_argument("--reduction_fraction", type=float, default=None, help="Portion of samples to keep.")
     parser.add_argument("--model", type=str, default="radtan", choices=model_flags.keys(),
                         help="Choose either radial-tangent or rational polynomial models.")
     args = parser.parse_args()
     video_path = Path(args.video).resolve(True)
+    if args.reduction_fraction is not None:
+        assert 0.0 < args.reduction_fraction < 1.0, "Reduction fraction must be in interval 0 < reduction_fraction < 1.0"
 
     reader = cv2.VideoCapture(str(video_path))
     fps = reader.get(cv2.CAP_PROP_FPS)
