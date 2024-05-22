@@ -145,3 +145,12 @@ def sharpen_image(image: NDArray[np.uint8]) -> NDArray[np.uint8]:
     result = cv2.filter2D(image, -1, kernel)
 
     return result
+
+def make_gray(image: Union[NDArray[np.uint8], cv2.cuda.GpuMat]) -> Union[NDArray[np.uint8], cv2.cuda.GpuMat]:
+    if isinstance(image, cv2.cuda.GpuMat):
+        if image.channels() > 1:
+            return cv2.cuda.cvtColor(image, cv2.COLOR_BGRA2GRAY)
+    else:
+        if image.ndim > 2:
+            return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return image

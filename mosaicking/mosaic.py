@@ -54,12 +54,12 @@ def main():
     detectors = []
     for model in models:
         if model == "ORB":
-            detectors.append(cv2.ORB_create())  # ORB detector is pretty good and is CC licensed
+            detectors.append(registration.OrbDetector())  # ORB detector is pretty good and is CC licensed
         if model == "SIFT":
-            detectors.append(cv2.SIFT_create())
+            detectors.append(registration.SiftDetector())  # SIFT detector is powerful but research use only
         if model == "SURF":
             try:
-                detectors.append(cv2.xfeatures2d.SURF_create())
+                detectors.append(registration.SurfDetector())
             except cv2.error:
                 warnings.warn("Trying to use non-free SURF on OpenCV built with non-free option disabled.", UserWarning)
         if model == "FAST":
@@ -75,16 +75,13 @@ def main():
             warnings.warn("GFTT features are not yet implemented.", UserWarning)
             #detectors.append(cv2.GFTTDetector_create())
         if model == "BRISK":
-            detectors.append(cv2.BRISK_create())
+            detectors.append(registration.BriskDetector())
         if model == "KAZE":
-            detectors.append(cv2.KAZE_create())
+            detectors.append(registration.KazeDetector())
+        if model == "AKAZE":
+            detectors.append(registration.AkazeDetector())
 
-    # DEFINE THE MATCHER METHOD
-    # FLANN parameters
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-    search_params = dict(checks=50)  # or pass empty dictionary
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
+    matcher = registration.Matcher()
 
     # DEFINE THE CAMERA PROPERTIES
     # Camera Intrinsic Matrix
@@ -242,7 +239,7 @@ def main():
                 if args.show_rotation:
                     cv2.imshow("ROTATION COMPENSATION", img)
                 # Compute matches between previous frame and current frame
-                ret, matches = registration.get_matches(des_prev, des, flann, args.min_matches)
+                ret, matches = registration.get_matches(des_prev, des, matcher, args.min_matches)
                 # Handle not enough matches
                 if not ret:
                     # We essentially start a new mosaic

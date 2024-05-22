@@ -7,12 +7,53 @@ import numpy as np
 import numpy.typing as npt
 from pathlib import Path
 from matplotlib import pyplot as plt
+import mosaicking
+import warnings
+import yaml
+
+
+def parse_intrinsics(args: argparse.Namespace, width: int, height: int):
+    # DEFINE THE CAMERA PROPERTIES
+    # Camera Intrinsic Matrix
+    # Default is set the calibration matrix to an identity matrix with transpose components centred on the image center
+    K = np.eye(3)
+    K[0, 2] = float(width) / 2
+    K[1, 2] = float(height) / 2
+
+    if args.intrinsic is not None:
+        K = np.array(args.intrinsic).reshape((3, 3))  # If -k argument is defined, generate the K matrix
+
+    if args.calibration is not None:
+        # If a calibration file has been given (a ROS camera_info yaml style file)
+        calibration_path = Path(args.calibration).resolve()
+        assert calibration_path.exists(), "File not found: {}".format(str(calibration_path))
+        with open(args.calibration, "r") as f:
+            calib_data = yaml.safe_load(f)
+        if 'camera_matrix' in calib_data:
+            K = np.array(calib_data['camera_matrix']['data']).reshape((3, 3))
+        else:
+            warnings.warn(f"No camera_matrix found in {str(calibration_path)}", UserWarning)
+
+    # Camera Lens distortion coefficients
+    dist_coeff = np.zeros((4, 1), np.float64)
+    if args.distortion is not None:
+        dist_coeff = np.array([[d] for d in args.distortion], np.float64)
+    if args.calibration is not None:
+        if 'distortion_coefficients' in calib_data:
+            dist_coeff = np.array(calib_data['distortion_coefficients']['data']).reshape(
+                (calib_data['distortion_coefficients']['rows'],
+                 calib_data['distortion_coefficients']['cols']))
+        else:
+            warnings.warn(f"No distortion_coefficients found in {str(calibration_path)}", UserWarning)
+
+    K, roi = cv2.getOptimalNewCameraMatrix(K, dist_coeff, (width, height), 0)
+    return K, dist_coeff
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("video", type=str, help="Path to video file.")
-    parser.add_argument("--output_directory", type=str,
+    parser.add_argument("video", type=Path, help="Path to video file.")
+    parser.add_argument("--output_directory", type=Path,
                         help="Path to directory where output mosaics are to be saved. Default is invokation path.",
                         default=".")
     group = parser.add_mutually_exclusive_group()
@@ -23,7 +64,7 @@ def parse_args():
     group.add_argument("--finish_frame", type=int, help="Frame number to finish at.")
     parser.add_argument("--frame_skip", type=int, default=None,
                         help="Number of frames to skip between each mosaic update.")
-    parser.add_argument("--orientation_file", type=str, default=None,
+    parser.add_argument("--orientation_file", type=Path, default=None,
                         help="Path to .csv file containing orientation measurements that transform world to the camera frame.")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--sync_points", type=float, nargs=2, default=None,
@@ -40,7 +81,7 @@ def parse_args():
                         help="Largest allowable size (width or height) for mosaic. Creates a new tile if it gets bigger.")
     parser.add_argument("--save_freq", type=int, default=0,
                         help="Save frequency for output mosaic (if less than 1 then output saves at exit).")
-    parser.add_argument("--scale_factor", type=float, default=0.0,
+    parser.add_argument("--scale_factor", type=float, default=1.0,
                         help="Scale the input image with constant aspect ratio.")
     parser.add_argument("--alpha", type=float, default=0.5,
                         help="Alpha blending scalar for merging new frames into mosaic.")
@@ -52,7 +93,7 @@ def parse_args():
     parser.add_argument("--equalize_color", action="store_true",
                         help="Flag to preprocess image for contrast equalization.")
     parser.add_argument("--equalize_luminance", action="store_true", help="Flag to preprocess image for lighting equalization.")
-    parser.add_argument("-c", "--calibration", type=str, default=None,
+    parser.add_argument("-c", "--calibration", type=Path, default=None,
                         help="Path to calibration file, overrides --intrinsic and --distortion.")
     parser.add_argument("-k", "--intrinsic", nargs=9, type=float, default=None,
                         help="Space delimited list of intrinsic matrix terms, Read as K[0,0],K[0,1],K[0,2],K[1,0],K[1,1],K[1,2],K[2,0],K[2,1],K[2,2]. Overriden by calibration file if intrinsic present.")
@@ -73,7 +114,7 @@ def parse_args():
     group.add_argument("--demo", action="store_true",
                        help="Creates a video of the mosaic creation process. For demo purposes only.")
     group.add_argument("--show_demo", action="store_true", help="Display the demo while underway.")
-    parser.add_argument("--features", type=str, nargs="+", choices=["ORB", "SIFT", "SURF", "BRISK", "KAZE", "ALL"],
+    parser.add_argument("--features", type=str, nargs="+", choices=["ORB", "SIFT", "SURF", "BRISK", "KAZE", "AKAZE", "ALL"],
                         default="ALL", help="Set of features to use in registration.")
     parser.add_argument("--show_matches", action="store_true", help="Display the matches.")
     parser.add_argument("--inliers_roi", action="store_true",
