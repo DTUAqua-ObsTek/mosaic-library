@@ -1,9 +1,10 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
+
 [project]
 name = "mosaic-library"
-version = "1.0.2"
+dynamic = ["version"]
 authors = [
   { name="Fletcher Thompson", email="fletho@dtu.dk" },
 ]
@@ -11,10 +12,28 @@ description = "A python library for manipulating images for underwater mosaickin
 readme = "README.MD"
 requires-python = ">=3.9"
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    "matplotlib",
+    "opencv-contrib-python",
+    "pandas",
+    "pyyaml",
+    "scikit-learn",
+    "scipy"
+]
+
 [project.urls]
 "Homepage" = "https://github.com/DTUAqua-ObsTek/mosaic-library"
 "Bug Tracker" = "https://github.com/DTUAqua-ObsTek/mosaic-library/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mosaicking"]
+namespaces = false
+[tool.setuptools_scm]
+write_to = "src/mosaicking/version.py"
