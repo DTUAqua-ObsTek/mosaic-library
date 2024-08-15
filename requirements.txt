@@ -7,4 +7,5 @@ pandas
 pyyaml
 scikit-learn
 scipy
+shapely
 wheel

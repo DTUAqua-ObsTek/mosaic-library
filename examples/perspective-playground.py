@@ -12,7 +12,7 @@ Obtained from discussion here: https://stackoverflow.com/questions/45811421/pyth
 """
 
 
-def add_inner_border(image: npt.NDArray[np.uint8], thickness: int, color: Tuple[int, ...]) -> npt.NDArray[np.uint8]:
+def add_inner_border(image: npt.NDArray[np.uint8], thickness: int, color: tuple[int, ...]) -> npt.NDArray[np.uint8]:
     # Draw top border
     cv2.rectangle(image, (0, 0), (image.shape[1], thickness), color, thickness)
     # Draw bottom border

@@ -343,3 +343,30 @@ def get_alignment(src_pts: npt.NDArray[float], src_shape: Tuple[int, int], dst_p
     t = [-xmin, -ymin]  # C of the upper left corner of the transformed image
     A[:2, -1] = A[:2, -1] + t  # C homography
     return A, (xmin, xmax), (ymin, ymax)
+
+
+def remove_z_rotation(rotation: Rotation) -> Rotation:
+    """
+    Removes the extrinsic Z rotation (yaw) component from a Rotation object.
+
+    Parameters:
+    rotation (Rotation): A scipy Rotation object.
+
+    Returns:
+    Rotation: A new Rotation object with the Z rotation component removed.
+    """
+    # Decompose the original rotation into Euler angles (yaw, pitch, roll)
+    # 'zyx' means the input rotation is first around z, then y, then x
+    ypr = rotation.as_euler('zyx')
+
+    # Set yaw to zero to remove rotation about the Z-axis
+    if ypr.ndim > 1:
+        ypr[:, 0] = 0
+    else:
+        ypr[0] = 0
+
+    # Create a new rotation using the modified yaw and original pitch and roll
+    # Note that the angles must be provided in the reverse order of axes
+    new_rotation = Rotation.from_euler('zyx', ypr)
+
+    return new_rotation
