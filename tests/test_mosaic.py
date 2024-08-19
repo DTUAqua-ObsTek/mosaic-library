@@ -10,7 +10,6 @@ class TestMosaic(unittest.TestCase):
     # TODO: test preprocessor pipeline
 
     def setUp(self):
-        mosaicking.HAS_CUDA = True
         K = np.array([[543.3327734182214, 0.0, 489.02536042247897],
                         [0.0, 542.398772982566, 305.38727712002805],
                         [0.0, 0.0, 1.0]])

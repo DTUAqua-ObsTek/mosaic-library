@@ -4,7 +4,7 @@ import cv2
 
 class TestVideoPlayer(unittest.TestCase):
     def setUp(self):
-        self._video = "../data/mosaicking/fishes.mp4"
+        self._video = "./data/mosaicking/fishes.mp4"
 
     def test_full_playback(self):
         """

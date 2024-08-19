@@ -19,21 +19,27 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "matplotlib",
+    "networkx",
     "opencv-contrib-python",
     "pandas",
     "pyyaml",
     "scikit-learn",
-    "scipy"
+    "scipy",
+    "shapely"
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/DTUAqua-ObsTek/mosaic-library"
-"Bug Tracker" = "https://github.com/DTUAqua-ObsTek/mosaic-library/issues"
+"Homepage" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library"
+"Bug Tracker" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library/-/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["mosaicking"]
 namespaces = false
+
 [tool.setuptools_scm]
-write_to = "src/mosaicking/version.py"
+# Optional: custom version scheme
+version_scheme = "guess-next-dev"
+local_scheme = "dirty-tag"
+# Optional: write the version to a file
+write_to = "src/mosaicking/_version.py"

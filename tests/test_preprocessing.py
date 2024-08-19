@@ -30,15 +30,11 @@ class TestPreprocessingModule(unittest.TestCase):
     def test_big_pipe_cls(self):
         args = [{"K": np.array([[0.5, 0.0, 50.0], [0.0, 0.5, 50.0], [0.0, 0.0, 1.0]]),
                  "D": np.array([-1e-16, 1e-16, 5e-16, -1e-16]),
-                 "width": 100,
-                 "height": 100,
                  "inverse": False},
                 {"clipLimit": 20.0, "tileGridSize": (3, 3)},
                 {"clipLimit": 100.0, "tileGridSize": (8, 8)},
                 {"K": np.array([[0.5, 0.0, 50.0], [0.0, 0.5, 50.0], [0.0, 0.0, 1.0]]),
                  "D": np.array([-1e-2, 1e-3, 5e-4, -1e-4]),
-                 "width": 100,
-                 "height": 100,
                  "inverse": True},
                 {"scaling": 0.5}
                 ]

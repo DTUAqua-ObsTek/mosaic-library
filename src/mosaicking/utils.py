@@ -10,10 +10,10 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import yaml
-from matplotlib import pyplot as plt
 from scipy.spatial.transform import Slerp, Rotation
 
 import cv2
+
 
 # Define a TypeVar bound to the abstract base class
 T = TypeVar('T', bound='DataReader')
@@ -210,7 +210,7 @@ class VideoPlayer(DataReader):
         return self._fps
 
     @abstractmethod
-    def _create_reader(self) -> Union[cv2.VideoCapture, cv2.cudacodec.VideoReader]:
+    def _create_reader(self) -> Union[cv2.VideoCapture, 'cv2.cudacodec.VideoReader']:
         ...
 
     @abstractmethod
@@ -336,7 +336,7 @@ class CUDAVideoPlayer(VideoPlayer):
     def release(self):
         self._video_reader = None
 
-    def _create_reader(self, ) -> cv2.cudacodec.VideoReader:
+    def _create_reader(self, ) -> 'cv2.cudacodec.VideoReader':
         return cv2.cudacodec.createVideoReader(str(self._video_path))
 
     def _set_position(self, pos: int) -> bool:
@@ -378,15 +378,15 @@ def load_orientations(path: os.PathLike, args: argparse.Namespace) -> pd.DataFra
     return df[~df.duplicated()]
 
 
-def plot_image_histogram(img: npt.NDArray[np.uint8], ax: plt.Axes = None) -> None:
-    if ax is None:
-        fig, ax = plt.subplots()
-    if img.ndim < 3:
-        img = img[..., None]
-    colors = ('b', 'g', 'r') if img.shape[-1] == 3 else ('k',)
-    for channel in range(img.shape[-1]):
-        hist = cv2.calcHist([img], [channel], None, [256], [0, 256])
-        ax.plot(hist, colors[channel])
+# def plot_image_histogram(img: npt.NDArray[np.uint8], ax: plt.Axes = None) -> None:
+#     if ax is None:
+#         fig, ax = plt.subplots()
+#     if img.ndim < 3:
+#         img = img[..., None]
+#     colors = ('b', 'g', 'r') if img.shape[-1] == 3 else ('k',)
+#     for channel in range(img.shape[-1]):
+#         hist = cv2.calcHist([img], [channel], None, [256], [0, 256])
+#         ax.plot(hist, colors[channel])
 
 
 def load_orientation(orientation_file: Path, video_time_offset: float = 0.0) -> Slerp:

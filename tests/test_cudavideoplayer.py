@@ -1,10 +1,12 @@
 import unittest
+import mosaicking
 from mosaicking import utils
 import cv2
 
+@unittest.skipIf(not mosaicking.HAS_CODEC, "Skipping CUDAVideoPlayer tests: cv2.cudacodec is not available.")
 class TestCUDAVideoPlayer(unittest.TestCase):
     def setUp(self):
-        self._video = "../data/mosaicking/fishes.mp4"
+        self._video = "./data/mosaicking/fishes.mp4"
 
     def test_full_playback(self):
         """

@@ -70,16 +70,6 @@ class ImageGraph(nx.DiGraph):
         """
         return self[image_id1][image_id2]['registration'].homography
 
-    def visualize_graph(self):
-        """
-        Visualize the graph (using NetworkX's built-in drawing functions or custom ones).
-        """
-        pos = nx.spring_layout(self)
-        nx.draw(self, pos, with_labels=True)
-        nx.draw_networkx_edge_labels(self, pos, edge_labels={(u, v): f'H' for u, v in self.edges})
-        import matplotlib.pyplot as plt
-        plt.show()
-
 
 def homogeneous_translation(x: float, y: float) -> np.ndarray:
     out = np.eye(3)

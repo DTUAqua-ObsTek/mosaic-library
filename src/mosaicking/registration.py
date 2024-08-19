@@ -41,7 +41,7 @@ class FeatureDetector(ABC):
         ...
 
     @abstractmethod
-    def _create(self, *args, **kwargs) -> Union[cv2.Feature2D, Sequence[cv2.Feature2D], cv2.cuda.SURF_CUDA, cv2.cuda.Feature2DAsync]:
+    def _create(self, *args, **kwargs) -> Union[cv2.Feature2D, Sequence[cv2.Feature2D], cv2.cuda.SURF_CUDA, 'cv2.cuda.Feature2DAsync']:
         """Initialize the detector here."""
         ...
 
@@ -57,7 +57,7 @@ class FeatureDetector(ABC):
 
 class OrbDetector(FeatureDetector):
 
-    def _create(self, force_cpu: bool = False, *args, **kwargs) -> Union[cv2.ORB, cv2.cuda.ORB]:
+    def _create(self, force_cpu: bool = False, *args, **kwargs) -> Union[cv2.ORB, 'cv2.cuda.ORB']:
         self._flag = force_cpu
         return cv2.cuda.ORB.create() if mosaicking.HAS_CUDA and not self._flag else cv2.ORB.create()
 
