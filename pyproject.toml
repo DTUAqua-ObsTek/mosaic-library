@@ -34,6 +34,13 @@ opencv = ["opencv-contrib-python"]
 "Homepage" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library"
 "Bug Tracker" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library/-/issues"
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.exclude-package-data]
+# Alternative way to exclude data in all packages
+"mosaicking" = ["data/*", "assets/*"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["mosaicking"]
