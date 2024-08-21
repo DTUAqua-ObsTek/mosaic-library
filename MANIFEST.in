@@ -1,0 +1,8 @@
+# Exclude the assets directory
+prune assets
+
+# Exclude the data directory
+prune data
+
+# Exclude the bag_proc.py file
+exclude .gitignore
