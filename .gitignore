@@ -143,3 +143,4 @@ cython_debug/
 # Output dir
 outputs
 tmp
+_version.py

@@ -20,13 +20,15 @@ classifiers = [
 ]
 dependencies = [
     "networkx",
-    "opencv-contrib-python",
     "pandas",
     "pyyaml",
     "scikit-learn",
     "scipy",
     "shapely"
 ]
+
+[project.optional-dependencies]
+opencv = ["opencv-contrib-python"]
 
 [project.urls]
 "Homepage" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library"
@@ -40,6 +42,6 @@ namespaces = false
 [tool.setuptools_scm]
 # Optional: custom version scheme
 version_scheme = "guess-next-dev"
-local_scheme = "dirty-tag"
+local_scheme = "no-local-version"
 # Optional: write the version to a file
 write_to = "src/mosaicking/_version.py"

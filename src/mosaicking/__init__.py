@@ -2,6 +2,11 @@ import re
 
 import cv2
 
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "dev"  # Fallback version during development
+
 
 def check_cuda():
     build_info = cv2.getBuildInformation()
