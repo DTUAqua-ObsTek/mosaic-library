@@ -4,5 +4,14 @@ prune assets
 # Exclude the data directory
 prune data
 
-# Exclude the bag_proc.py file
+# Exclude the examples
+prune examples
+
+# Exclude the tests
+prune tests
+
+# Exclude the .gitignore file
 exclude .gitignore
+
+# Exclude the MANIFEST.in file
+exclude MANIFEST.in
