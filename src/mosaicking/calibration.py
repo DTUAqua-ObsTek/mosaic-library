@@ -5,7 +5,10 @@ from pathlib import Path
 import json
 import sys
 from sklearn.cluster import KMeans
+import logging
 
+# Get a logger for this module
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -40,7 +43,7 @@ def main():
     objpoints = [] # 3d point in real world space
     imgpoints = np.full((nframes, cols * rows, 1, 2), np.nan, np.float32)  # 2d points in image plane.
     try:
-        print("Step 1: Extracting Corners...")
+        logger.info("Step 1: Extracting Corners.")
         for frame in range(nframes):
             ret, img = reader.read()  # get the next frame
             if not ret:
@@ -68,7 +71,7 @@ def main():
     imgpoints = imgpoints[~np.isnan(imgpoints).reshape((nframes, cols*rows*2)).any(axis=1)]
     nsamples = imgpoints.shape[0]
     if args.reduction_fraction is not None and args.reduction_fraction < 1:
-        print("Step 2: Clustering corners to reduce samples...", end='')
+        logger.info("Step 2: Clustering corners to reduce samples.")
         nsamples_reduced = int(args.reduction_fraction * nsamples)
         kmeans = KMeans(nsamples_reduced, n_init='auto')
         kmeans.fit(imgpoints.reshape((nsamples, cols*rows*2)))
@@ -77,26 +80,23 @@ def main():
         for sample in range(nsamples_reduced):
             cluster_idx = np.argwhere(labels.squeeze() == sample).squeeze()
             imgpoints_reduced[sample, ...] = imgpoints[np.random.choice(cluster_idx, 1), ...]
-        print(" Done!")
     else:
-        print("Step 2: Skipping because reduction_fraction is not set.")
+        logger.info("Step 2: Skipping because reduction_fraction is not set.")
         nsamples_reduced = nsamples
         imgpoints_reduced = imgpoints.copy()
-    print("Step 3: Calibrating ...", end='')
+    logger.info("Step 3: Calibrating.")
     objpoints = [objp for _ in range(nsamples_reduced)]
     imgpoints_reduced = [p.squeeze() for p in imgpoints_reduced]
     ret, K, D, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints_reduced, (width, height), None, None)
-    print(" Done!")
-    print(f"Results\nRMS re-projection error: {ret} pix.")
-    print(f"Obtained Intrinsic Matrix\n{K}\nObtained Distortion Coefficients\n{D}")
+    logger.info(f"Results\nRMS re-projection error: {ret} pix.")
+    logger.info(f"Obtained Intrinsic Matrix\n{K}\nObtained Distortion Coefficients\n{D}")
     output = {"K": K.flatten().tolist(),
               "D": D.flatten().tolist()}
     out = Path(args.calibration).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Saving results to {out}")
+    logger.info(f"Saving results to {out}")
     with open(args.calibration, "w") as f:
         json.dump(output, f)
-    print("Have a good day.")
 
 
 if __name__ == "__main__":

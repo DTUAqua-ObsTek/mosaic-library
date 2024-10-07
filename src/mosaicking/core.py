@@ -5,6 +5,12 @@ import networkx as nx
 from dataclasses import dataclass
 import cv2
 
+import logging
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
+
+
 # TODO: the graph representation could (not sure if they should be placed this far down)
 #  1. compute inverse homography when edge added.
 #  2. use feature matching to find new edges when queried
@@ -15,6 +21,7 @@ import cv2
 @dataclass
 class ImageNode:
     features: dict[str, dict[str, Union[Sequence[cv2.KeyPoint], Union[None, npt.NDArray[np.float32]]]]]  # features = {feature_type: {keypoints: [cv2.KeyPoint], descriptors: np.ndarray}}
+    dimensions: tuple[int, int]
 
     def __post_init__(self):
         # Convert cv2.KeyPoint sequences to NumPy arrays

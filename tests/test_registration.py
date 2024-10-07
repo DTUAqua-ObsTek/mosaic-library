@@ -8,7 +8,7 @@ import cv2
 
 class TestRegistrationModule(unittest.TestCase):
     def setUp(self) -> None:
-        self._blank_image = np.zeros((100, 100), np.uint8)
+        self._blank_image = np.zeros((500, 500), np.uint8)
         # Create a black canvas
         self._orb_image = np.zeros((500, 500), dtype=np.uint8)
         # Draw some shapes on the image that are likely to produce ORB features

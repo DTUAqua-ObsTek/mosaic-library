@@ -2,6 +2,11 @@ import numpy as np
 from typing import Sequence
 import cv2
 
+import logging
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
+
 
 def calculate_tiles(bounding_box: tuple[int, int, int, int], tile_size: tuple[int, int]) -> Sequence[tuple[int, int, int, int]]:
     """

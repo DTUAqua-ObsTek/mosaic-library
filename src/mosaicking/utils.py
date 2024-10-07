@@ -14,6 +14,11 @@ from scipy.spatial.transform import Slerp, Rotation
 
 import cv2
 
+import logging
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
+
 
 # Define a TypeVar bound to the abstract base class
 T = TypeVar('T', bound='DataReader')

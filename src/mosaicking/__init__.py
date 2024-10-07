@@ -2,6 +2,13 @@ import re
 
 import cv2
 
+import logging
+
+# Create a logger for the package
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+
 try:
     from ._version import __version__
 except ImportError:

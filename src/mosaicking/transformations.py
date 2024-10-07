@@ -5,6 +5,11 @@ from numpy import typing as npt
 from typing import Tuple, Sequence, List
 import cv2
 
+import logging
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
+
 
 def calculate_homography(K: npt.NDArray[float], width: int, height: int, R: npt.NDArray[float], T: npt.NDArray[float], gradient_clip: float=0.0) -> Tuple[npt.NDArray[float], Tuple[int, int], Tuple[int, int]]:
     if K.shape[1] < 4:

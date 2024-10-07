@@ -18,16 +18,19 @@ class TestMosaic(unittest.TestCase):
         self._preprocessors = (("undistort", {"K": K, "D": D}, None),
                                ("scaling", {"scaling": 0.5}, None),
                                ("clahe", {"clipLimit": 100.0, "tileGridSize": (11, 11)}, None),)
-        self._mosaic = mosaic.SequentialMosaic(data_path="/home/fft/Data/AquaLoc/archaeology/archaeo_sequence_6_cinfo_camera_image_raw.mp4",
-                                               output_path="/tmp/test_sequential/",
+        self._mosaic = mosaic.SequentialMosaic(data_path="Data/export_harbor_sequence_2.mp4",
+                                               output_path="test_sequential/",
                                                feature_types=("ORB",), #, "SIFT"),
                                                intrinsics={"K": K, "D": D},
-                                               orientation_path="/home/fft/Data/AquaLoc/archaeology/archaeo_sequence_6_camera2stabilized.csv",
-                                               time_offset=1542883311.780022336,
+                                               orientation_path="Data/tf_cam_ned_harbor_sequence_2.csv",
+                                               time_offset=1523958586.902587138,
                                                verbose=False,
                                                caching=False,
                                                force_cpu=True,
                                                player_params={"finish": 500})
+
+    def test_mosaic_save(self):
+        self._mosaic.save()
 
     def test_mosaic_feature_extraction(self):
         self._mosaic.extract_features()

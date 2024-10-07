@@ -10,6 +10,11 @@ from mosaicking.preprocessing import make_gray
 from abc import ABC, abstractmethod
 from mosaicking.core import concatenate_with_slices
 
+import logging
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
+
 
 def get_keypoints_descriptors(img: npt.NDArray[np.uint8], detectors: Sequence[cv2.Feature2D], mask: npt.NDArray[np.uint8] = None) -> Tuple[Tuple[cv2.KeyPoint], Tuple[Union[npt.NDArray[np.float32], npt.NDArray[np.uint8]]]]:
     features = [get_features(img, detector, mask) for detector in detectors]
@@ -32,6 +37,7 @@ def get_match_points(kp_src: Sequence[cv2.KeyPoint], kp_dst: Sequence[cv2.KeyPoi
 class FeatureDetector(ABC):
 
     def __init__(self, *args, **kwargs) -> None:
+        logger.debug(f"Initialize extractor {self.feature_type} with args: {args} and kwargs: {kwargs}.")
         self._detector = self._create(*args, **kwargs)
 
 
@@ -57,9 +63,9 @@ class FeatureDetector(ABC):
 
 class OrbDetector(FeatureDetector):
 
-    def _create(self, force_cpu: bool = False, *args, **kwargs) -> Union[cv2.ORB, 'cv2.cuda.ORB']:
+    def _create(self, force_cpu: bool = False, nFeatures: int = 500, *args, **kwargs) -> Union[cv2.ORB, 'cv2.cuda.ORB']:
         self._flag = force_cpu
-        return cv2.cuda.ORB.create() if mosaicking.HAS_CUDA and not self._flag else cv2.ORB.create()
+        return cv2.cuda.ORB.create(nfeatures=nFeatures) if mosaicking.HAS_CUDA and not self._flag else cv2.ORB.create(nfeatures=nFeatures)
 
     def detect(self, img: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat], mask: npt.NDArray[np.uint8] = None, stream: cv2.cuda.Stream = None) -> tuple[Sequence[cv2.KeyPoint], npt.NDArray[np.float32]]:
         if mosaicking.HAS_CUDA and not self._flag:
@@ -77,6 +83,8 @@ class OrbDetector(FeatureDetector):
             gpu = cv2.cuda.GpuMat(make_gray(img))
         else:
             gpu = make_gray(img)
+        # if mask is None:
+        #     mask = np.ones(img.shape[:2], dtype=np.uint8)
         gpu_mask = cv2.cuda.GpuMat(mask)
         if mask is not None:
             gpu_mask = make_gray(gpu_mask)
@@ -131,6 +139,7 @@ class SiftDetector(FeatureDetector):
         return "SIFT"
 
     def _create(self, *args, **kwargs) -> cv2.SIFT:
+        nFeatures = kwargs.get("nFeatures", 0)
         return cv2.SIFT.create()
 
 

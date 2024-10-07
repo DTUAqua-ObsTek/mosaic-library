@@ -12,6 +12,11 @@ import mosaicking
 import warnings
 
 
+import logging
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
+
 class Preprocessor(ABC):
 
     @abstractmethod
@@ -36,6 +41,17 @@ class ColorCLAHE(Preprocessor):
         channels = cv2.split(img)
         equalized_channels = [self._clahe.apply(channel) for channel in channels]
         return cv2.merge(tuple(equalized_channels), )
+
+# Image Pre-processing Module
+class Crop(Preprocessor):
+    def __init__(self, roi: tuple[int, int, int, int]):
+        self._roi = roi
+
+    def apply(self, img: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat], stream: cv2.cuda.Stream = None) -> Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat]:
+        x, y, width, height = self._roi
+        if mosaicking.HAS_CUDA and isinstance(img, cv2.cuda.GpuMat):
+            return img.rowRange(y, y + height).colRange(x, x + width)
+        return img[y:y+height, x:x+width]
 
 
 class DistortionMapper(Preprocessor):
@@ -128,7 +144,8 @@ def parse_preprocessor_strings(*args: Sequence[str]) -> Sequence[Preprocessor]:
     """
     mappings = {"clahe": ColorCLAHE,
                 "undistort": DistortionMapper,
-                "scaling": ConstARScaling}
+                "scaling": ConstARScaling,
+                "crop": Crop}
     output = []
     for arg in args:
         if arg not in mappings:
