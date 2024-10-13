@@ -26,7 +26,6 @@ class Preprocessor(ABC):
 
 # Image Pre-processing Module
 class ColorCLAHE(Preprocessor):
-    # TODO: allow adjustment of clipLimit and tileGridSize
     def __init__(self, clipLimit: float = 40.0, tileGridSize: tuple[int, int] = (8, 8)):
         if mosaicking.HAS_CUDA:
             self._clahe = cv2.cuda.createCLAHE(clipLimit, tileGridSize)
@@ -48,6 +47,14 @@ class Crop(Preprocessor):
         self._roi = roi
 
     def apply(self, img: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat], stream: cv2.cuda.Stream = None) -> Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat]:
+        """
+        Applies a crop to a provided numpy image or GpuMat image.
+        :param img: The input image.
+        :type img: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat]
+        :param stream: An optional Stream object
+        :return: The cropped image.
+        :rtype: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat]
+        """
         x, y, width, height = self._roi
         if mosaicking.HAS_CUDA and isinstance(img, cv2.cuda.GpuMat):
             return img.rowRange(y, y + height).colRange(x, x + width)

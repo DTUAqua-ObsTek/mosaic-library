@@ -15,6 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
@@ -24,7 +25,7 @@ dependencies = [
     "pyyaml",
     "scikit-learn",
     "scipy",
-    "shapely"
+    "h5py"
 ]
 
 [project.optional-dependencies]
@@ -33,6 +34,12 @@ opencv = ["opencv-contrib-python"]
 [project.urls]
 "Homepage" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library"
 "Bug Tracker" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library/-/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"mosaicking" = ["resources/schema.sql"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

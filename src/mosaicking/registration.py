@@ -2,13 +2,13 @@ import warnings
 
 import cv2
 import numpy as np
-from typing import Union, Tuple, List, Sequence, Any
+from typing import Union, Tuple, List, Sequence
 from numpy import typing as npt
 from itertools import chain
 import mosaicking
 from mosaicking.preprocessing import make_gray
 from abc import ABC, abstractmethod
-from mosaicking.core import concatenate_with_slices
+from mosaicking.core.helpers import concatenate_with_slices
 
 import logging
 
@@ -208,7 +208,7 @@ class CompositeDetector(FeatureDetector):
 
 class Matcher:
     def __init__(self):
-        self._matcher = cv2.cuda.DescriptorMatcher.createBFMatcher(cv2.NORM_L2) if mosaicking.HAS_CUDA else cv2.BFMatcher.create(cv2.NORM_L2, crossCheck=True)
+        self._matcher = cv2.cuda.DescriptorMatcher.createBFMatcher(cv2.NORM_L2) if mosaicking.HAS_CUDA else cv2.BFMatcher.create(cv2.NORM_L2, crossCheck=False)
 
     def knn_match(self, query: np.ndarray, train: np.ndarray, mask: np.ndarray = None) -> Sequence[Sequence[cv2.DMatch]]:
         if mosaicking.HAS_CUDA:
@@ -268,7 +268,7 @@ class CompositeMatcher(Matcher):
         return matches
 
 
-def get_matches(descriptors1: Union[npt.NDArray[float], Sequence[npt.NDArray[float]]], descriptors2: Union[npt.NDArray[float], Sequence[npt.NDArray[float]]], matcher: Matcher, minmatches: int):
+def get_matches(descriptors1: Union[npt.NDArray[float] | Sequence[npt.NDArray[float]]], descriptors2: Union[npt.NDArray[float] | Sequence[npt.NDArray[float]]], matcher: Matcher, minmatches: int) -> tuple[bool, Sequence[cv2.DMatch]]:
     if not isinstance(descriptors1, (tuple, list)):
         descriptors1 = [descriptors1]
     if not isinstance(descriptors2, (tuple, list)):
@@ -289,14 +289,10 @@ def get_matches(descriptors1: Union[npt.NDArray[float], Sequence[npt.NDArray[flo
         nlength += d2.shape[0]
     return minmatches <= len(good), good
 
-def get_features(img: npt.NDArray[np.uint8], fdet: FeatureDetector, mask: npt.NDArray[np.uint8] = None) -> Tuple[List[cv2.KeyPoint], Union[npt.NDArray[np.float32], npt.NDArray[np.uint8]]]:
+def get_features(img: npt.NDArray[np.uint8], fdet: FeatureDetector, mask: npt.NDArray[np.uint8] = None) -> tuple[Sequence[cv2.KeyPoint], npt.NDArray[Union[ np.uint8 | np.float32]]]:
     """
     Given a feature detector, obtain the keypoints and descriptors found in the image.
     """
     if img.ndim > 2:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return fdet.detect(img, mask)
-
-
-
-

@@ -24,7 +24,20 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T', bound='DataReader')
 
 
-def parse_intrinsics(args: argparse.Namespace, width: int, height: int) -> Sequence[np.ndarray]:
+def parse_intrinsics(args: argparse.Namespace, width: int, height: int) -> tuple[npt.NDArray[float], npt.NDArray[float]]:
+    """
+    Provided arguments from utils.parse_arguments and image dimensions, return the camera intrinsic matrix and distortion coefficients.
+    :param args: argparse.Namespace object
+    :type args: argparse.Namespace
+    :param width: image width in pixels
+    :type width: int
+    :param height: image height in pixels
+    :type height: int
+    :returns:
+        - **K** (*npt.NDArray[float]*): camera intrinsic matrix
+        - **D** (*npt.NDArray[float]*): distortion coefficients
+    :rtype: tuple[npt.NDArray[float], npt.NDArray[float]]
+    """
     # DEFINE THE CAMERA PROPERTIES
     # Camera Intrinsic Matrix
     # Default is set the calibration matrix to an identity matrix with transpose components centred on the image center
@@ -44,7 +57,7 @@ def parse_intrinsics(args: argparse.Namespace, width: int, height: int) -> Seque
         if 'camera_matrix' in calib_data:
             K = np.array(calib_data['camera_matrix']['data']).reshape((3, 3))
         else:
-            warnings.warn(f"No camera_matrix found in {str(calibration_path)}", UserWarning)
+            logger.warning(f"No camera_matrix found in {str(calibration_path)}", UserWarning)
 
     # Camera Lens distortion coefficients
     dist_coeff = np.zeros((4, 1), np.float64)
@@ -56,14 +69,19 @@ def parse_intrinsics(args: argparse.Namespace, width: int, height: int) -> Seque
                 (calib_data['distortion_coefficients']['rows'],
                  calib_data['distortion_coefficients']['cols']))
         else:
-            warnings.warn(f"No distortion_coefficients found in {str(calibration_path)}", UserWarning)
+            logging.warning(f"No distortion_coefficients found in {str(calibration_path)}", UserWarning)
 
     # Here we remove any invalid regions
     K, roi = cv2.getOptimalNewCameraMatrix(K, dist_coeff, (width, height), 0)
     return K, dist_coeff
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """
+    Parse commandline arguments using argparse.
+    :return: *args* - parsed arguments object.
+    :rtype: argparse.Namespace
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("video", type=Path, help="Path to video file.")
     parser.add_argument("--output_directory", type=Path,
@@ -142,6 +160,17 @@ def parse_args():
 
 
 def prepare_frame(left: np.ndarray, right: np.ndarray, size: tuple) -> np.ndarray:
+    """
+
+    :param left: left image
+    :type left: np.ndarray
+    :param right: right image
+    :type right: np.ndarray
+    :param size: output size (rows, cols)
+    :type size: tuple
+    :return: **side-by-side**: output image.
+    :rtype: np.ndarray
+    """
     left_size = (int(size[0] / 2), int(size[1]))
     right_size = (int(size[0] / 2), int(size[1]))
     left = cv2.resize(left, left_size)
@@ -150,18 +179,57 @@ def prepare_frame(left: np.ndarray, right: np.ndarray, size: tuple) -> np.ndarra
 
 
 class DataReader(ABC):
+    """
+    Abstract base class for creating and managing a data reader.
+    Provides a blueprint for data reader creation and resource release.
+
+    **Methods**
+
+    - :meth:`_create_reader`: Class method that initializes a specific data reader instance.
+    - :meth:`release`: Releases any resources or handles associated with the data reader.
+    """
 
     @classmethod
     @abstractmethod
     def _create_reader(cls: Type[T]) -> T:
-        pass
+        """
+        Initializes and returns a new instance of the data reader.
+
+        :returns: A new instance of a data reader implementing this class.
+        :rtype: T
+        """
+        ...
 
     @abstractmethod
     def release(self):
+        """
+        Releases any resources or handles held by the data reader.
+        """
         ...
 
 
 class VideoPlayer(DataReader):
+    """
+    A video player class for reading and navigating through frames of a video file.
+
+    **Parameters**
+
+    - **video_path** (*Union[Path, os.PathLike]*): Path to the video file.
+    - **frame_skip** (*int, optional*): Number of frames to skip when reading.
+    - **start** (*Union[str, float, int], optional*): Starting point in the video, in seconds, frames, or HH:MM:SS.SS format.
+    - **finish** (*Union[str, float, int], optional*): Ending point in the video, in seconds, frames, or HH:MM:SS.SS format.
+    - **verbose** (*bool, optional*): Enables verbose logging.
+
+    **Attributes**
+
+    - **frame_skip** (*int*): Number of frames to skip when reading.
+    - **frame_count** (*int*): Total frame count of the video.
+    - **start_frame** (*int*): Starting frame index.
+    - **finish_frame** (*int*): Ending frame index.
+    - **width** (*int*): Width of the video frames.
+    - **height** (*int*): Height of the video frames.
+    - **fps** (*float*): Frames per second of the video.
+    """
 
     def __init__(self, video_path: Union[Path, os.PathLike],
                  frame_skip: int = None,
@@ -179,51 +247,110 @@ class VideoPlayer(DataReader):
         self._width = int(self.get(cv2.CAP_PROP_FRAME_WIDTH))
         self._height = int(self.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self._frame_count = int(self.get(cv2.CAP_PROP_FRAME_COUNT))
+        self._format_spec = "{" + f":0{len(str(self._frame_count))}d" + "}"
         self._frame_skip = frame_skip
         self._configure_pos(start, finish)  # !! Defines additional private attributes !!
         self._verbose = verbose
-        # TODO: logging implementation for verbose
-        if verbose:
-            print(f"Opened video {video_path}")
+        if self._verbose:
+            logger.info(f"Opened video {video_path}")
+
+    @property
+    def next_name(self) -> str:
+        """
+        :return: A string representing the name of the video and frame position of the next frame to be read.
+        """
+        return f"{self._video_path.stem}-" + self._format_spec.format(int(self.get(cv2.CAP_PROP_POS_FRAMES)))
 
     @property
     def frame_skip(self) -> int:
+        """
+        :returns: Number of frames to skip when reading.
+        :rtype: int
+        """
         return self._frame_skip
 
     @property
     def frame_count(self) -> int:
+        """
+        :returns: Total number of frames in the video.
+        :rtype: int
+        """
         return self._frame_count
 
     @property
     def start_frame(self) -> int:
+        """
+        :returns: Starting frame index.
+        :rtype: int
+        """
         return self._start_frame
 
     @property
     def finish_frame(self) -> int:
+        """
+        :returns: Ending frame index.
+        :rtype: int
+        """
         return self._finish_frame
 
     @property
     def width(self) -> int:
+        """
+        :returns: Width of the video frames.
+        :rtype: int
+        """
         return self._width
 
     @property
     def height(self) -> int:
+        """
+        :returns: Height of the video frames.
+        :rtype: int
+        """
         return self._height
 
     @property
     def fps(self) -> float:
+        """
+        :returns: Frames per second of the video.
+        :rtype: float
+        """
         return self._fps
 
     @abstractmethod
     def _create_reader(self) -> Union[cv2.VideoCapture, 'cv2.cudacodec.VideoReader']:
+        """
+       Initializes and returns the video reader object.
+
+       :returns: A VideoCapture or VideoReader object for reading video frames.
+       :rtype: Union[cv2.VideoCapture, cv2.cudacodec.VideoReader]
+       """
         ...
 
     @abstractmethod
     def get(self, propId: int) -> float:
+        """
+        Retrieves a specified property from the video reader.
+
+        :param propId: Property ID to retrieve.
+        :type propId: int
+        :returns: The value of the specified property.
+        :rtype: float
+        """
         ...
 
     @abstractmethod
     def set(self, propId: int, value: float) -> bool:
+        """
+        Sets a specified property in the video reader.
+
+        :param propId: Property ID to set.
+        :type propId: int
+        :param value: New value for the property.
+        :type value: float
+        :returns: True if the property was set successfully; False otherwise.
+        :rtype: bool
+        """
         ...
 
     @abstractmethod
@@ -235,6 +362,14 @@ class VideoPlayer(DataReader):
 
     @staticmethod
     def _parse_time(playback_time: Union[str, float, int]) -> tuple[int, float]:
+        """
+        Parses a playback time specified as a string, frame number, or seconds.
+
+        :param playback_time: Playback time in HH:MM:SS.SS format, frame number, or seconds.
+        :type playback_time: Union[str, float, int]
+        :returns: Property ID and time in milliseconds or frame index.
+        :rtype: tuple[int, float]
+        """
         # Playback time in HH:MM:SS.SS
         if isinstance(playback_time, str):
             time_pattern = re.compile(
@@ -257,6 +392,13 @@ class VideoPlayer(DataReader):
             return cv2.CAP_PROP_POS_MSEC, start_msecs
 
     def read(self, frame=None) -> tuple[bool, Union[np.ndarray, cv2.cuda.GpuMat]]:
+        """
+        Reads the next frame from the video, considering any frame skip setting.
+
+        :param frame: Frame buffer for output (optional).
+        :returns: Tuple of success status and the read frame.
+        :rtype: tuple[bool, Union[np.ndarray, cv2.cuda.GpuMat]]
+        """
         if not self.frame_skip:
             return self._video_reader.read(frame)
         # If frame_skip specified, then include it
@@ -272,6 +414,14 @@ class VideoPlayer(DataReader):
             return int(condition[1] / 1000.0 * self.get(cv2.CAP_PROP_FPS))
 
     def _configure_pos(self, start: Union[str, int, float, None], finish: Union[str, int, float, None]):
+        """
+        Configures the starting and finishing positions of the video.
+
+        :param start: Starting point in frames or seconds, or HH:MM:SS format.
+        :type start: Union[str, int, float, None]
+        :param finish: Finishing point in frames or seconds, or HH:MM:SS format.
+        :type finish: Union[str, int, float, None]
+        """
         # Set VideoCapture object to a starting position (either in seconds or the frame #)
         # VideoCapture reports current position (i.e. the frame # it is going to provide when "read" method is called)
         # as zero indexed.
@@ -288,28 +438,45 @@ class VideoPlayer(DataReader):
         assert self.set(cv2.CAP_PROP_POS_FRAMES, self._start_frame), f"Could not set video start position to {start}"
 
     def __iter__(self):
+        """
+        Returns an iterator for iterating over video frames.
+        """
         return self
 
+
     def __repr__(self):
+        """
+        Returns a formatted string showing the current frame position and total frame count.
+        """
         fmt = "Current Frame: {" + ":0{}d".format(len(str(self._frame_count))) + "} " + "of {}".format(
             self._frame_count)
         return fmt.format(int(self.get(cv2.CAP_PROP_POS_FRAMES)) + 1)
 
     def _evaluate_stopping(self):
         """
-        Return true if the current position (i.e. the frame that will next be read) is greater than the specified finishing frame.
+        Checks if the current frame position has reached or exceeded the finish frame.
+
+        :returns: True if the current frame is beyond the finish frame; False otherwise.
+        :rtype: bool
         """
         return self.get(cv2.CAP_PROP_POS_FRAMES) > self._finish_frame
 
     def __len__(self):
         """
-        Needed for iterator
+        Calculates the number of frames between the start and finish positions, considering frame skip.
+
+        :returns: Number of frames in the defined playback range.
+        :rtype: int
         """
         return len(range(*slice(self._start_frame, self._finish_frame, self._frame_skip).indices(self._frame_count)))
 
     def __next__(self) -> tuple[bool, np.ndarray]:
         """
-        Needed for iterator
+        Retrieves the next frame, raising StopIteration if beyond the finish frame.
+
+        :returns: Tuple of success status and the next frame.
+        :rtype: tuple[bool, np.ndarray]
+        :raises StopIteration: When the playback reaches the finish frame.
         """
         # If the VideoPlayer still has frames to playback
         if not self._evaluate_stopping():
@@ -326,7 +493,7 @@ class CUDAVideoPlayer(VideoPlayer):
     def set(self, propId: int, value: float) -> bool:
         if propId == cv2.CAP_PROP_POS_FRAMES:
             return self._set_position(value)
-        warnings.warn("CUDAVideoPlayer.set doesn't work like CPUVideoPlayer")
+        logger.warning("CUDAVideoPlayer.set doesn't work like CPUVideoPlayer")
         return self._video_reader.setVideoReaderProps(propId, value)
 
     def read(self, frame=None) -> tuple[bool, cv2.cuda.GpuMat]:
@@ -373,7 +540,7 @@ class CPUVideoPlayer(VideoPlayer):
         self._video_reader = None
 
 
-def load_orientations(path: os.PathLike, args: argparse.Namespace) -> pd.DataFrame:
+def load_orientations_pd(path: os.PathLike, args: argparse.Namespace) -> pd.DataFrame:
     """
     Given a path containing orientations, retrieve the orientations corresponding to a time offset between video and orientation data.
     """
@@ -383,18 +550,7 @@ def load_orientations(path: os.PathLike, args: argparse.Namespace) -> pd.DataFra
     return df[~df.duplicated()]
 
 
-# def plot_image_histogram(img: npt.NDArray[np.uint8], ax: plt.Axes = None) -> None:
-#     if ax is None:
-#         fig, ax = plt.subplots()
-#     if img.ndim < 3:
-#         img = img[..., None]
-#     colors = ('b', 'g', 'r') if img.shape[-1] == 3 else ('k',)
-#     for channel in range(img.shape[-1]):
-#         hist = cv2.calcHist([img], [channel], None, [256], [0, 256])
-#         ax.plot(hist, colors[channel])
-
-
-def load_orientation(orientation_file: Path, video_time_offset: float = 0.0) -> Slerp:
+def load_orientation_slerp(orientation_file: Path, video_time_offset: float = 0.0) -> Slerp:
     """
     Spherical linear interpolation of orientation quaternions provided by csv-like file.
     """
