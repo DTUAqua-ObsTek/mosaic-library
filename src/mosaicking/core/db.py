@@ -83,6 +83,18 @@ class DB(ABC):
         ...
 
     @abstractmethod
+    def add_node_global_features(self, node: Node, global_features: npt.NDArray[float]):
+        ...
+
+    @abstractmethod
+    def get_node_global_features(self, node: Node) -> npt.NDArray[float]:
+        ...
+
+    @abstractmethod
+    def remove_node_global_features(self, node: Node) -> None:
+        ...
+
+    @abstractmethod
     def register_edge(self, node_from: Node, node_to: Node, overwrite: bool = False):
         ...
 
@@ -194,7 +206,7 @@ class SQLDB(DB):
 
             for feature_type, feature_data in features.items():
                 kps = feature_data.get('keypoints', None)
-                if kps is not None and isinstance(kps[0], cv2.KeyPoint):
+                if kps and isinstance(kps[0], cv2.KeyPoint):
                     kps = cv2.KeyPoint.convert(kps)
                 keypoints_blob = pickle.dumps(kps)
                 descriptors_blob = pickle.dumps(feature_data.get('descriptors', None))
@@ -241,6 +253,42 @@ class SQLDB(DB):
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM NodeFeatures WHERE node_id = ?", (node.identifier,))
+            conn.commit()
+
+    def add_node_global_features(self, node: Node, global_features: dict[str, npt.NDArray[np.float32]]):
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            for feature_type, feature_data in global_features.items():
+                descriptors_blob = pickle.dumps(feature_data)
+                cursor.execute(
+                    """INSERT INTO NodeGlobalFeatures (node_id, feature_type, global_features)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(node_id, feature_type) DO UPDATE
+                       SET global_features = excluded.global_features""",
+                    (node.identifier, feature_type, descriptors_blob)
+                )
+            conn.commit()
+
+    def get_node_global_features(self, node: Node) -> dict[str, npt.NDArray[np.float32]]:
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT feature_type, global_features FROM NodeGlobalFeatures WHERE node_id = ?",
+                           (node.identifier,))
+            rows = cursor.fetchall()
+
+            if not rows:
+                raise ValueError(f"No global features found for node with ID {node.identifier}")
+
+            # Unpickle and return features
+            features = {}
+            for feature_type, desc_blob in rows:
+                features.update({feature_type: pickle.loads(desc_blob)})
+            return features
+
+    def remove_node_global_features(self, node: Node) -> None:
+        with self._connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM NodeGlobalFeatures WHERE node_id = ?", (node.identifier,))
             conn.commit()
 
     def register_edge(self, node_from: Node, node_to: Node, overwrite: bool = False):
@@ -322,26 +370,29 @@ class SQLDB(DB):
                 ]
             return matches_by_type
 
-    def add_edge_registration(self, node_from: Node, node_to: Node, registration: npt.NDArray[float]) -> None:
+    def add_edge_registration(self, node_from: Node, node_to: Node, registration: npt.NDArray[float],
+                              reproj_error: float | None, frac_inliers: float | None) -> None:
         """
         Add or update a calculated registration to an existing edge.
         :param node_from: Source node.
         :param node_to: Target node.
         :param registration: Registration matrix.
+        :param reproj_error: euclidean reprojection error (pix)
+        :param frac_inliers: Fraction of inlier points used in estimation
         """
         registration_blob = pickle.dumps(registration)
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """INSERT INTO EdgeRegistration (source_id, target_id, registration)
-                   VALUES (?, ?, ?)
+                """INSERT INTO EdgeRegistration (source_id, target_id, registration, reproj_error, frac_inliers)
+                   VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(source_id, target_id) DO UPDATE
                    SET registration = excluded.registration""",
-                (node_from.identifier, node_to.identifier, registration_blob)
+                (node_from.identifier, node_to.identifier, registration_blob, reproj_error, frac_inliers)
             )
             conn.commit()
 
-    def get_edge_registration(self, node_from: Node, node_to: Node) -> npt.NDArray[float]:
+    def get_edge_registration(self, node_from: Node, node_to: Node) -> tuple[npt.NDArray[float], float | None, float | None]:
         """
         Fetch the registration for an existing edge.
         :param node_from: Source node.
@@ -351,7 +402,7 @@ class SQLDB(DB):
         with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT registration FROM EdgeRegistration WHERE source_id = ? AND target_id = ?",
+                "SELECT registration, reproj_error, frac_inliers FROM EdgeRegistration WHERE source_id = ? AND target_id = ?",
                 (node_from.identifier, node_to.identifier)
             )
             result = cursor.fetchone()
@@ -360,7 +411,7 @@ class SQLDB(DB):
                 raise ValueError("Registration data not found for the specified edge.")
 
             # Deserialize and return the registration matrix
-            return pickle.loads(result[0])
+            return pickle.loads(result[0]), result[1], result[2]
 
     def remove_node(self, node: Node) -> None:
         """

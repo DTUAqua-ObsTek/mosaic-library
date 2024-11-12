@@ -2,13 +2,17 @@ import warnings
 
 import cv2
 import numpy as np
-from typing import Union, Tuple, List, Sequence
+from typing import Union, Tuple,  Sequence
 from numpy import typing as npt
 from itertools import chain
 import mosaicking
 from mosaicking.preprocessing import make_gray
 from abc import ABC, abstractmethod
 from mosaicking.core.helpers import concatenate_with_slices
+import mosaicking.core.interface
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.neighbors import NearestNeighbors
+from shapely.geometry import Polygon
 
 import logging
 
@@ -38,8 +42,9 @@ class FeatureDetector(ABC):
 
     def __init__(self, *args, **kwargs) -> None:
         logger.debug(f"Initialize extractor {self.feature_type} with args: {args} and kwargs: {kwargs}.")
+        self._args = args
+        self._kwargs = kwargs
         self._detector = self._create(*args, **kwargs)
-
 
     @property
     @abstractmethod
@@ -59,6 +64,17 @@ class FeatureDetector(ABC):
         if isinstance(mask, cv2.cuda.GpuMat):
             mask = mask.download()
         return self._detector.detectAndCompute(img, mask, None, False)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['_detector']
+        return state
+
+    def __setstate__(self, state):
+        # Restore configuration
+        self.__dict__.update(state)
+        # Reinitialize the cv2 detector
+        self._detector = self._create(*self._args, **self._kwargs)
 
 
 class OrbDetector(FeatureDetector):
@@ -208,7 +224,10 @@ class CompositeDetector(FeatureDetector):
 
 class Matcher:
     def __init__(self):
-        self._matcher = cv2.cuda.DescriptorMatcher.createBFMatcher(cv2.NORM_L2) if mosaicking.HAS_CUDA else cv2.BFMatcher.create(cv2.NORM_L2, crossCheck=False)
+        self._matcher = self._create_matcher()
+
+    def _create_matcher(self) -> Union['cv2.cuda.DescriptorMatcher', cv2.BFMatcher]:
+        return cv2.cuda.DescriptorMatcher.createBFMatcher(cv2.NORM_L2) if mosaicking.HAS_CUDA else cv2.BFMatcher.create(cv2.NORM_L2, crossCheck=False)
 
     def knn_match(self, query: np.ndarray, train: np.ndarray, mask: np.ndarray = None) -> Sequence[Sequence[cv2.DMatch]]:
         if mosaicking.HAS_CUDA:
@@ -232,6 +251,16 @@ class Matcher:
             return self._matcher.match(gpu_query, gpu_train, gpu_mask)
         return self._matcher.match(query, train, mask)
 
+    def __getstate__(self):
+        # Return the object's state minus the _matcher attribute
+        state = self.__dict__.copy()
+        del state['_matcher']  # Exclude the non-pickleable _matcher
+        return state
+
+    def __setstate__(self, state):
+        # Restore the object's state and recreate the _matcher
+        self.__dict__.update(state)
+        self._matcher = self._create_matcher()
 
 class CompositeMatcher(Matcher):
     """
@@ -267,7 +296,6 @@ class CompositeMatcher(Matcher):
             matches.update({feature_type: super().match(query[feature_type], train[feature_type])})
         return matches
 
-
 def get_matches(descriptors1: Union[npt.NDArray[float] | Sequence[npt.NDArray[float]]], descriptors2: Union[npt.NDArray[float] | Sequence[npt.NDArray[float]]], matcher: Matcher, minmatches: int) -> tuple[bool, Sequence[cv2.DMatch]]:
     if not isinstance(descriptors1, (tuple, list)):
         descriptors1 = [descriptors1]
@@ -296,3 +324,82 @@ def get_features(img: npt.NDArray[np.uint8], fdet: FeatureDetector, mask: npt.ND
     if img.ndim > 2:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return fdet.detect(img, mask)
+
+def create_bovw(graph: mosaicking.core.interface.ImageGraph, n_clusters: int, batch_size: int) -> dict[str, MiniBatchKMeans]:
+    bovw = dict()
+    for node, features in graph.nodes(data="features", default=None):
+        if features is None:
+            continue
+        features = features()
+        for feature_type, feature in features.items():
+            if feature_type not in bovw:
+                bovw.update({feature_type: MiniBatchKMeans(n_clusters=n_clusters, batch_size=batch_size)})
+            model = bovw[feature_type]
+            model.partial_fit(feature['descriptors'])
+    return bovw
+
+def create_bovw_histogram(descriptors: npt.NDArray[np.uint8 | np.float32], model: MiniBatchKMeans) -> npt.NDArray[np.float32]:
+    # Predict cluster labels
+    labels = model.predict(descriptors)
+    # Generate histogram of visual words
+    n_clusters = model.n_clusters
+    hist, _ = np.histogram(labels, bins=np.arange(n_clusters + 1))
+    hist = hist.astype("float32")
+    hist /= (hist.sum() + 1e-6)  # Normalize histogram
+    return hist
+
+def create_nn(graph: mosaicking.core.interface.ImageGraph, top_k: int) -> dict[str, NearestNeighbors]:
+    global_features = dict()
+    for node, gf in graph.nodes(data="global_features", default=None):
+        gf = gf()
+        for feature_type, feature in gf.items():
+            if feature_type not in global_features:
+                global_features[feature_type] = [feature]
+            else:
+                global_features[feature_type].append(feature)
+    nn_models = dict()
+    for feature_type, features in global_features.items():
+        nn = NearestNeighbors(n_neighbors=top_k + 1, metric='euclidean')  # + 1 because nn matches with itself
+        nn.fit(np.stack(features, axis=0))
+        nn_models[feature_type] = nn
+    return nn_models
+
+# def bbox_overlap(shape_1: npt.NDArray[int], shape_2: npt.NDArray[int]) -> bool:
+#     rect_1 = cv2.minAreaRect(shape_1)
+#     rect_2 = cv2.minAreaRect(shape_2)
+#     intersection_type, _ = cv2.rotatedRectangleIntersection(rect_1, rect_2)
+#     return intersection_type > cv2.INTERSECT_NONE
+
+
+def bbox_overlap(shape_1: npt.NDArray[int], shape_2: npt.NDArray[int]) -> bool:
+    # Create Polygon objects from the corner points
+    poly_1 = Polygon(shape_1)
+    poly_2 = Polygon(shape_2)
+
+    # Check if the polygons intersect
+    return poly_1.intersects(poly_2)
+
+def compute_reprojection_error(H, kp_src, kp_dst):
+    """
+    Compute the reprojection error given a homography H and two sets of corresponding keypoints.
+
+    :param H: Homography matrix (3x3) or affine matrix (3x2).
+    :param kp_src: Keypoints from the source image (Nx2).
+    :param kp_dst: Corresponding keypoints from the destination image (Nx2).
+    :return: Mean reprojection error.
+    """
+    # Convert keypoints to homogeneous coordinates (Nx3)
+    kp_src_h = np.hstack([kp_src, np.ones((kp_src.shape[0], 1))])
+
+    # Transform the source keypoints using the homography
+    kp_src_transformed = (H @ kp_src_h.T).T
+
+    # Convert homogeneous coordinates back to Euclidean (divide by the last element)
+    kp_src_transformed = kp_src_transformed[:, :2] / kp_src_transformed[:, 2:3]
+
+    # Compute the Euclidean distance (reprojection error) between the transformed and destination keypoints
+    reprojection_errors = np.linalg.norm(kp_src_transformed - kp_dst, axis=1)
+
+    # Return the mean reprojection error
+    mean_error = np.mean(reprojection_errors)
+    return mean_error

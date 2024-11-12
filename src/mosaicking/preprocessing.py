@@ -3,7 +3,7 @@ import functools
 import cv2
 import numpy as np
 import numpy.typing as npt
-from typing import Union, Sequence, Any
+from typing import Union, Sequence, Any, Callable
 from numbers import Number
 
 from abc import ABC, abstractmethod
@@ -18,6 +18,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Preprocessor(ABC):
+
+    @abstractmethod
+    def __init__(self):
+        ...
 
     @abstractmethod
     def apply(self, img: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat], stream: cv2.cuda.Stream = None) -> Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat]:
@@ -99,7 +103,7 @@ class ConstARScaling(Preprocessor):
     def __init__(self, scaling: float = 1.0):
         self._scaling = scaling
 
-    def apply(self, img: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat], stream: cv2.cuda.Stream = None) -> Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat]:
+    def apply(self, img: npt.NDArray[np.uint8] | cv2.cuda.GpuMat, stream: cv2.cuda.Stream = None) -> npt.NDArray[np.uint8] | cv2.cuda.GpuMat:
         if self._scaling == 1.0:
             return img
         interpolant = cv2.INTER_CUBIC if self._scaling > 1.0 else cv2.INTER_AREA
@@ -117,21 +121,24 @@ class ConstARScaling(Preprocessor):
 class Pipeline(Preprocessor):
     def __init__(self, preprocessors: Sequence[Preprocessor], args: Sequence[dict[str, Any]] = None):
         if args is None:
-            args = [{}] * len(preprocessors)  # Use empty dicts if no args provided
+            args = [{}] * len(preprocessors)
 
         if len(preprocessors) != len(args):
             raise ValueError("The number of preprocessors must match the number of argument dictionaries.")
 
-        # Build the pipeline using functools.reduce
-        def chain(f, g_arg):
-            g, arg = g_arg
-            return lambda img, **kwargs: g.apply(f(img, **kwargs), **arg)
+        # Chain each preprocessor with its corresponding arguments
+        self._pipeline = functools.reduce(self.chain, zip(preprocessors, args), self.identity)
 
-        self._pipeline = functools.reduce(
-            chain,
-            zip(preprocessors, args),
-            lambda img, **kwargs: img  # Identity function for initialization
-        )
+    @staticmethod
+    def identity(img, **kwargs):
+        return img
+
+    @staticmethod
+    def chain(f: Callable, g_arg: tuple[Preprocessor, dict[str, Any]]) -> Callable:
+        g, arg = g_arg
+        def chained(img, **kwargs):
+            return g.apply(f(img, **kwargs), **arg)
+        return chained
 
     def apply(self, img: Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat], stream: cv2.cuda.Stream = None) -> Union[npt.NDArray[np.uint8], cv2.cuda.GpuMat]:
         # TODO: maybe it's worth considering if converting back to input datatype is a good idea.

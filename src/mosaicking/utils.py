@@ -1,7 +1,6 @@
 import argparse
 import os
 import re
-import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Sequence, Union, Type, TypeVar
@@ -50,8 +49,7 @@ def parse_intrinsics(args: argparse.Namespace, width: int, height: int) -> tuple
 
     if args.calibration is not None:
         # If a calibration file has been given (a ROS camera_info yaml style file)
-        calibration_path = Path(args.calibration).resolve()
-        assert calibration_path.exists(), "File not found: {}".format(str(calibration_path))
+        calibration_path = Path(args.calibration).resolve(True)
         with open(args.calibration, "r") as f:
             calib_data = yaml.safe_load(f)
         if 'camera_matrix' in calib_data:
@@ -159,25 +157,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def prepare_frame(left: np.ndarray, right: np.ndarray, size: tuple) -> np.ndarray:
-    """
-
-    :param left: left image
-    :type left: np.ndarray
-    :param right: right image
-    :type right: np.ndarray
-    :param size: output size (rows, cols)
-    :type size: tuple
-    :return: **side-by-side**: output image.
-    :rtype: np.ndarray
-    """
-    left_size = (int(size[0] / 2), int(size[1]))
-    right_size = (int(size[0] / 2), int(size[1]))
-    left = cv2.resize(left, left_size)
-    right = cv2.resize(right, right_size)
-    return np.concatenate((left, right), axis=1)
-
-
 class DataReader(ABC):
     """
     Abstract base class for creating and managing a data reader.
@@ -206,6 +185,41 @@ class DataReader(ABC):
         Releases any resources or handles held by the data reader.
         """
         ...
+
+    @abstractmethod
+    def read(self) -> tuple[bool, str, npt.NDArray[np.uint8] | None]:
+        ...
+
+    @abstractmethod
+    def peek_name(self) -> str:
+        """
+        Name of the next item to be read.
+        """
+        ...
+
+    @abstractmethod
+    def __getitem__(self, item):
+        """
+        For dictionary-like access
+        """
+
+    @abstractmethod
+    def __iter__(self):
+        """
+        For iteration through data.
+        """
+
+    @abstractmethod
+    def __len__(self):
+        """
+        For iteration through data.
+        """
+
+    @abstractmethod
+    def __next__(self):
+        """
+        For iteration through data.
+        """
 
 
 class VideoPlayer(DataReader):
@@ -255,7 +269,7 @@ class VideoPlayer(DataReader):
             logger.info(f"Opened video {video_path}")
 
     @property
-    def next_name(self) -> str:
+    def peek_name(self) -> str:
         """
         :return: A string representing the name of the video and frame position of the next frame to be read.
         """
@@ -353,6 +367,15 @@ class VideoPlayer(DataReader):
         """
         ...
 
+    def __getitem__(self, idx: int | str) -> tuple[bool, npt.NDArray[np.uint8] | None]:
+        if isinstance(idx, str):
+            match = re.search(r'\d+', idx)
+            idx = int(match.group()) if match else None
+            if idx is None:
+                raise ValueError(f"Invalid index {idx}")
+        self.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
+        return self.read()
+
     @abstractmethod
     def release(self):
         """
@@ -391,21 +414,25 @@ class VideoPlayer(DataReader):
             start_msecs = 1000.0 * playback_time
             return cv2.CAP_PROP_POS_MSEC, start_msecs
 
-    def read(self, frame=None) -> tuple[bool, Union[np.ndarray, cv2.cuda.GpuMat]]:
+    def read(self, frame: npt.NDArray=None) -> tuple[bool, int, str, npt.NDArray[np.uint8]| cv2.cuda.GpuMat | None]:
         """
         Reads the next frame from the video, considering any frame skip setting.
 
         :param frame: Frame buffer for output (optional).
-        :returns: Tuple of success status and the read frame.
-        :rtype: tuple[bool, Union[np.ndarray, cv2.cuda.GpuMat]]
+        :returns: Tuple of success status, frame #, unique name, and the read frame.
+        :rtype: tuple[bool, str, npt.NDArray[np.uint8] | cv2.cuda.GpuMat | None]
         """
+        name = self.peek_name
+        pos = int(self.get(cv2.CAP_PROP_POS_FRAMES))
+        logger.debug(f"Read frame {pos}")
         if not self.frame_skip:
-            return self._video_reader.read(frame)
+            ret, data = self._video_reader.read(frame)
+            return ret, pos, name, data
         # If frame_skip specified, then include it
         next_frame = self.get(cv2.CAP_PROP_POS_FRAMES) + self.frame_skip
         ret, frame = self._video_reader.read(frame)
         self.set(cv2.CAP_PROP_POS_FRAMES, next_frame)
-        return ret, frame
+        return ret, pos, name, frame
 
     def _get_frame_pos(self, condition: tuple[int, float]) -> int:
         if condition[0] == cv2.CAP_PROP_POS_FRAMES:
@@ -437,20 +464,13 @@ class VideoPlayer(DataReader):
             self._finish_frame = self._frame_count - 1
         assert self.set(cv2.CAP_PROP_POS_FRAMES, self._start_frame), f"Could not set video start position to {start}"
 
-    def __iter__(self):
-        """
-        Returns an iterator for iterating over video frames.
-        """
-        return self
-
-
     def __repr__(self):
         """
         Returns a formatted string showing the current frame position and total frame count.
         """
-        fmt = "Current Frame: {" + ":0{}d".format(len(str(self._frame_count))) + "} " + "of {}".format(
-            self._frame_count)
-        return fmt.format(int(self.get(cv2.CAP_PROP_POS_FRAMES)) + 1)
+        fmt = "Next frame: {" + ":0{}d".format(len(str(self._frame_count))) + "} " + "of {}".format(
+            self._finish_frame)
+        return fmt.format(int(self.get(cv2.CAP_PROP_POS_FRAMES)))
 
     def _evaluate_stopping(self):
         """
@@ -461,6 +481,12 @@ class VideoPlayer(DataReader):
         """
         return self.get(cv2.CAP_PROP_POS_FRAMES) > self._finish_frame
 
+    def __iter__(self):
+        """
+        Returns an iterator for iterating over video frames.
+        """
+        return self
+
     def __len__(self):
         """
         Calculates the number of frames between the start and finish positions, considering frame skip.
@@ -470,11 +496,11 @@ class VideoPlayer(DataReader):
         """
         return len(range(*slice(self._start_frame, self._finish_frame, self._frame_skip).indices(self._frame_count)))
 
-    def __next__(self) -> tuple[bool, np.ndarray]:
+    def __next__(self) -> tuple[bool, int, str, npt.NDArray[np.uint8]| cv2.cuda.GpuMat | None]:
         """
         Retrieves the next frame, raising StopIteration if beyond the finish frame.
 
-        :returns: Tuple of success status and the next frame.
+        :returns: Tuple of success status, frame #, name of frame and the read frame.
         :rtype: tuple[bool, np.ndarray]
         :raises StopIteration: When the playback reaches the finish frame.
         """
@@ -483,6 +509,19 @@ class VideoPlayer(DataReader):
             return self.read()
         # End of Iteration
         raise StopIteration
+
+    def __getstate__(self):
+        # Create a copy of the instance’s state dictionary
+        state = self.__dict__.copy()
+        # Replace the attribute with the function to initialize it
+        state['_video_reader'] = self._create_reader
+        return state
+
+    def __setstate__(self, state):
+        # Restore the instance’s state
+        self.__dict__.update(state)
+        # Reinitialize self._video_reader
+        self._video_reader = self._video_reader()
 
 
 class CUDAVideoPlayer(VideoPlayer):
@@ -496,14 +535,18 @@ class CUDAVideoPlayer(VideoPlayer):
         logger.warning("CUDAVideoPlayer.set doesn't work like CPUVideoPlayer")
         return self._video_reader.setVideoReaderProps(propId, value)
 
-    def read(self, frame=None) -> tuple[bool, cv2.cuda.GpuMat]:
+    def read(self, frame=None) -> tuple[bool, int, str, npt.NDArray[np.uint8]| cv2.cuda.GpuMat | None]:
+        name = self.peek_name
+        pos = int(self.get(cv2.CAP_PROP_POS_FRAMES))
+        logger.debug(f"Read frame {pos}")
         if not self.frame_skip:
-            return self._video_reader.nextFrame(frame)
+            ret, frame = self._video_reader.nextFrame(frame)
+            return ret, pos, name, frame
         # If frame_skip specified, then include it
-        next_frame = self.get(cv2.CAP_PROP_POS_FRAMES) + self.frame_skip
+        next_frame = int(self.get(cv2.CAP_PROP_POS_FRAMES) + self.frame_skip)
         ret, frame = self._video_reader.nextFrame(frame)
         self._set_position(next_frame)
-        return ret, frame
+        return ret, pos, name, frame
 
     def release(self):
         self._video_reader = None
@@ -531,9 +574,6 @@ class CPUVideoPlayer(VideoPlayer):
 
     def set(self, propId: int, value: float) -> bool:
         return self._video_reader.set(propId, value)
-
-    def read(self, frame=None) -> tuple[bool, np.ndarray]:
-        return super().read(frame)
 
     def release(self):
         self._video_reader.release()

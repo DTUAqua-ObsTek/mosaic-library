@@ -45,14 +45,12 @@ def check_cudacodec() -> bool:
     :rtype: bool
     """
     if HAS_CUDA:
-        build_info = cv2.getBuildInformation()
-        if "NVCUVID" in build_info:
+        if hasattr(cv2, "cudacodec"):
             logger.info("CUDA codec is enabled in your OpenCV build.")
             return True
-        else:
-            logger.info("CUDA codec is not enabled in your OpenCV build.")
-            return False
-    logger.info("CUDA codec is not enabled in your OpenCV build. Check CUDA.")
+        logger.info("CUDA codec is not enabled in your OpenCV build.")
+        return False
+    logger.info("CUDA codec is not enabled in your OpenCV build. Check if built with CUDA.")
     return False
 
 HAS_CODEC = check_cudacodec()

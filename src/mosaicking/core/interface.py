@@ -1,11 +1,12 @@
 from pathlib import Path
-from typing import Optional, Union, Sequence, Iterable
+from typing import Optional, Sequence, Iterable
 
 import cv2
 import networkx as nx
 import numpy as np
 import numpy.typing as npt
 from functools import partial, wraps
+import itertools
 
 from mosaicking.core.db import SQLDB, Node
 
@@ -48,11 +49,16 @@ class ImageGraph(nx.DiGraph):
         return node
 
     @_validate_db_backend
-    def add_features(self, node: Node, features: dict[str, dict[str, Union[npt.NDArray[Union[np.float32 | np.uint8]] | Sequence[cv2.KeyPoint]]]]):
+    def add_features(self, node: Node, features: dict[str, dict[str, npt.NDArray[np.float32 | np.uint8] | Sequence[cv2.KeyPoint]]]):
         # add the feature data to the db
         self._db_backend.add_node_features(node, features)
         # instead of adding the feature data to the node, add a prepared handle to the db to retrieve the feature data.
         self.nodes[node].update({"features": partial(self._db_backend.get_node_features, node)})
+
+    @_validate_db_backend
+    def add_global_features(self, node:Node, global_features: dict[str, npt.NDArray[np.float32]]):
+        self._db_backend.add_node_global_features(node, global_features)
+        self.nodes[node].update({"global_features": partial(self._db_backend.get_node_global_features, node)})
 
     @_validate_db_backend
     def register_edge(self, node_from: Node, node_to: Node ):
@@ -65,8 +71,8 @@ class ImageGraph(nx.DiGraph):
         self.edges[node_from, node_to].update({"matches": partial(self._db_backend.get_edge_matches, node_from, node_to)})
 
     @_validate_db_backend
-    def add_registration(self, node_from: Node, node_to: Node, registration: npt.NDArray[float]):
-        self._db_backend.add_edge_registration(node_from, node_to, registration)
+    def add_registration(self, node_from: Node, node_to: Node, registration: npt.NDArray[float], reproj_error: float, frac_inliers: float):
+        self._db_backend.add_edge_registration(node_from, node_to, registration, reproj_error, frac_inliers)
         self.edges[node_from, node_to].update({"registration": partial(self._db_backend.get_edge_registration, node_from, node_to)})
 
     @_validate_db_backend
@@ -84,4 +90,26 @@ class ImageGraph(nx.DiGraph):
         for node in nodes:
             self.remove_node(node)
 
+def _propagate_homographies(graph: ImageGraph) -> npt.NDArray[np.float32]:
+    # Given a directed graph of homographies, return them as a sequence of homographies for each node.
+    if len(graph) == 1:
+        return graph[list(graph.nodes)[0]].get("H0", np.eye(3)[None, ...])
+    elif len(graph) < 1:
+        raise ValueError("No nodes in graph.")
+    else:
+        # order the edges by dependency
+        sorted_edges = list(nx.topological_sort(nx.line_graph(graph)))
+        sorted_H = [graph[u][v]['registration']()[0] for u, v in sorted_edges]
+        N0 = sorted_edges[0][0]  # first node in sorted graph
+        # if node has an initial rotation
+        H0 = graph[N0].get("H0", np.eye(3))
+        sorted_H = [H0] + sorted_H
+        sorted_H = np.stack(sorted_H, axis=0)
+        return np.array(tuple(
+            itertools.accumulate(sorted_H, np.matmul)))  # Propagate the homographys to reference to first node.
 
+def _get_graph_image_dimensions(graph: ImageGraph) -> npt.NDArray[np.float32]:
+    """Accumulate the 'dimensions' attribute of nodes into a Nx2 NumPy array."""
+    if len(graph) < 1:
+        raise ValueError("No nodes in graph.")
+    return np.array([node.dimensions for node in graph.nodes()])
