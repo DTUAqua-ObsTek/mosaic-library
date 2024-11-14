@@ -23,55 +23,36 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T', bound='DataReader')
 
 
-def parse_intrinsics(args: argparse.Namespace, width: int, height: int) -> tuple[npt.NDArray[float], npt.NDArray[float]]:
+def parse_intrinsics(calibration_file: Path) -> dict[str, npt.NDArray[float]]:
     """
     Provided arguments from utils.parse_arguments and image dimensions, return the camera intrinsic matrix and distortion coefficients.
-    :param args: argparse.Namespace object
-    :type args: argparse.Namespace
-    :param width: image width in pixels
-    :type width: int
-    :param height: image height in pixels
-    :type height: int
+    :param calibration_file: path to calibration file (.yaml)
+    :type calibration_file: Path
     :returns:
         - **K** (*npt.NDArray[float]*): camera intrinsic matrix
         - **D** (*npt.NDArray[float]*): distortion coefficients
-    :rtype: tuple[npt.NDArray[float], npt.NDArray[float]]
+    :rtype: dict[str, npt.NDArray[float]]
     """
-    # DEFINE THE CAMERA PROPERTIES
-    # Camera Intrinsic Matrix
-    # Default is set the calibration matrix to an identity matrix with transpose components centred on the image center
-    K = np.eye(3)
-    K[0, 2] = float(width) / 2
-    K[1, 2] = float(height) / 2
-
-    if args.intrinsic is not None:
-        K = np.array(args.intrinsic).reshape((3, 3))  # If -k argument is defined, generate the K matrix
-
-    if args.calibration is not None:
-        # If a calibration file has been given (a ROS camera_info yaml style file)
-        calibration_path = Path(args.calibration).resolve(True)
-        with open(args.calibration, "r") as f:
-            calib_data = yaml.safe_load(f)
-        if 'camera_matrix' in calib_data:
-            K = np.array(calib_data['camera_matrix']['data']).reshape((3, 3))
-        else:
-            logger.warning(f"No camera_matrix found in {str(calibration_path)}", UserWarning)
-
-    # Camera Lens distortion coefficients
-    dist_coeff = np.zeros((4, 1), np.float64)
-    if args.distortion is not None:
-        dist_coeff = np.array([[d] for d in args.distortion], np.float64)
-    if args.calibration is not None:
-        if 'distortion_coefficients' in calib_data:
-            dist_coeff = np.array(calib_data['distortion_coefficients']['data']).reshape(
-                (calib_data['distortion_coefficients']['rows'],
-                 calib_data['distortion_coefficients']['cols']))
-        else:
-            logging.warning(f"No distortion_coefficients found in {str(calibration_path)}", UserWarning)
-
-    # Here we remove any invalid regions
-    K, roi = cv2.getOptimalNewCameraMatrix(K, dist_coeff, (width, height), 0)
-    return K, dist_coeff
+    # If a calibration file has been given (a ROS camera_info yaml style file)
+    calibration_path = Path(calibration_file).resolve(True)
+    c = dict()
+    with open(calibration_path, "r") as f:
+        calib_data = yaml.safe_load(f)
+    if 'camera_matrix' in calib_data:
+        c.update({"K": np.array(calib_data['camera_matrix']['data']).reshape(
+            (calib_data['camera_matrix']['rows'],
+            calib_data['camera_matrix']['cols']))})
+    else:
+        logger.warning(f"No camera_matrix found in {str(calibration_path)}", UserWarning)
+        return None
+    if 'distortion_coefficients' in calib_data:
+        c.update({"D": np.array(calib_data['distortion_coefficients']['data']).reshape(
+            (calib_data['distortion_coefficients']['rows'],
+            calib_data['distortion_coefficients']['cols']))})
+    else:
+        logger.warning(f"No distortion_coefficients found in {str(calibration_path)}", UserWarning)
+        c.update({"D": np.zeros(5)})
+    return c
 
 
 def parse_args() -> argparse.Namespace:
@@ -82,78 +63,61 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("video", type=Path, help="Path to video file.")
-    parser.add_argument("--output_directory", type=Path,
-                        help="Path to directory where output mosaics are to be saved. Default is invokation path.",
-                        default=".")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--start_time", type=float, help="Time (secs) to start from.")
-    group.add_argument("--start_frame", type=int, help="Frame number to start from.")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--finish_time", type=float, help="Time (secs) to finish at.")
-    group.add_argument("--finish_frame", type=int, help="Frame number to finish at.")
-    parser.add_argument("--frame_skip", type=int, default=None,
-                        help="Number of frames to skip between each mosaic update.")
-    parser.add_argument("--orientation_file", type=Path, default=None,
-                        help="Path to .csv file containing orientation measurements that transform world to the camera frame.")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--sync_points", type=float, nargs=2, default=None,
-                       help="Time points (sec) where video and orientation file are in sync, used to calculate time offset between video and timestamps in orientation file.")
-    group.add_argument("--time_offset", type=float, default=None,
-                       help="Time offset (sec) between video and orientation file timestamps, used for synchronization.")
-    parser.add_argument("--min_matches", type=int, default=4,
-                        help="Minimum number of matches to proceed with registration.")
-    parser.add_argument("--min_features", type=int, default=100,
-                        help="Minimum number of features to detect in an image.")
-    parser.add_argument("--max_warp_size", type=int, nargs='+', default=None,
-                        help="Maximum size of warped image (used to prevent OOM errors), if 1 argument given then image is clipped to square, if 2 then the order is height, width.")
-    parser.add_argument("--max_mosaic_size", type=int, default=None,
-                        help="Largest allowable size (width or height) for mosaic. Creates a new tile if it gets bigger.")
-    parser.add_argument("--save_freq", type=int, default=0,
-                        help="Save frequency for output mosaic (if less than 1 then output saves at exit).")
-    parser.add_argument("--scale_factor", type=float, default=1.0,
-                        help="Scale the input image with constant aspect ratio.")
-    parser.add_argument("--alpha", type=float, default=0.5,
-                        help="Alpha blending scalar for merging new frames into mosaic.")
-    parser.add_argument("--show_rotation", action="store_true",
-                        help="Flag to display the rotation compensation using rotation data.")
-    parser.add_argument("--show_mosaic", action="store_true", help="Flag to display the mosaic output.")
-    parser.add_argument("--show_preprocessing", action="store_true", help="Flag to display the preprocessed image")
-    parser.add_argument("--imadjust", action="store_true", help="Flag to preprocess image for color balance.")
-    parser.add_argument("--equalize_color", action="store_true",
-                        help="Flag to preprocess image for contrast equalization.")
-    parser.add_argument("--equalize_luminance", action="store_true",
-                        help="Flag to preprocess image for lighting equalization.")
+    parser.add_argument("project", type=Path,
+                        help="Path to directory where output mosaics are to be saved.")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing database entries.")
+    parser.add_argument("--force-cpu", action="store_true", help="Disable GPU operations.")
+    parser.add_argument("--force-cuda-off", action="store_false", help="Disable CUDA operations.")
+    parser.add_argument("--force-cudacodec-off", action="store_false", help="Disable CUDA codec operations.")
+
+    # Video Player Arguments
+    start_time_group = parser.add_mutually_exclusive_group()
+    start_time_group.add_argument("--start-time-secs", metavar="START", type=float, help="Time (secs) to start from.")
+    start_time_group.add_argument("--start-frame", metavar="START", type=int, help="Frame number to start from.")
+    start_time_group.add_argument("--start-playtime", metavar="START", type=str, help="Playback time HH:MM:SS to start from.")
+    finish_time_group = parser.add_mutually_exclusive_group()
+    finish_time_group.add_argument("--finish-time-secs", type=float, help="Time (secs) to finish at.")
+    finish_time_group.add_argument("--finish-frame", type=int, help="Frame number to finish at.")
+    finish_time_group.add_argument("--finish-playtime", type=str, help="Playback time HH:MM:SS to finish at.")
+    parser.add_argument("--frame-skip", type=int, default=None,
+                        help="Number of frames to skip in video player.")
+
+    # Preprocessing
     parser.add_argument("-c", "--calibration", type=Path, default=None,
                         help="Path to calibration file, overrides --intrinsic and --distortion.")
-    parser.add_argument("-k", "--intrinsic", nargs=9, type=float, default=None,
-                        help="Space delimited list of intrinsic matrix terms, Read as K[0,0],K[0,1],K[0,2],K[1,0],K[1,1],K[1,2],K[2,0],K[2,1],K[2,2]. Overriden by calibration file if intrinsic present.")
-    parser.add_argument("-d", "--distortion", nargs="+", type=float, default=None,
-                        help="Space delimited list of distortion coefficients, Read as K1, K2, p1, p2. Overriden by calibration file if distortion present.")
-    parser.add_argument("-x", "--xrotation", type=float, default=0,
-                        help="Rotation around image plane's x axis (radians).")
-    parser.add_argument("-y", "--yrotation", type=float, default=0,
-                        help="Rotation around image plane's y axis (radians).")
-    parser.add_argument("-z", "--zrotation", type=float, default=0,
-                        help="Rotation around image plane's z axis (radians).")
-    parser.add_argument("-g", "--gradientclip", type=float, default=0,
-                        help="Clip the gradient of severely distorted image.")
-    parser.add_argument("-f", "--fisheye", action="store_true", help="Flag to use fisheye distortion model.")
-    parser.add_argument("--homography", type=str, choices=["rigid", "similar", "affine", "perspective"],
-                        default="similar", help="Type of 2D homography to perform.")
-    group = parser.add_argument_group()
-    group.add_argument("--demo", action="store_true",
-                       help="Creates a video of the mosaic creation process. For demo purposes only.")
-    group.add_argument("--show_demo", action="store_true", help="Display the demo while underway.")
-    parser.add_argument("--features", type=str, nargs="+",
+
+    # Stabilization Arguments
+    stabilization_group = parser.add_argument_group(title="Stabilization")
+    stabilization_group.add_argument("--orientation-path", type=Path, default=None,
+                        help="Path to .csv file containing timestamped orientation measurements that transform world"
+                             " to the camera frame.")
+    stabilization_group.add_argument("--orientation-time-offset", type=float, default=None,
+                                     help="Timestamp (secs) referenced to timestamp in orientation file where"
+                                          "video starts (00:00:00).")
+    # Feature Extraction
+    parser.add_argument("--feature-types", type=str, nargs="+",
                         choices=["ORB", "SIFT", "SURF", "BRISK", "KAZE", "AKAZE", "ALL"],
-                        default="ALL", help="Set of features to use in registration.")
-    parser.add_argument("--show_matches", action="store_true", help="Display the matches.")
-    parser.add_argument("--inliers_roi", action="store_true",
-                        help="Only allow the convex hull of the inlier points to be displayed.")
-    parser.add_argument("--max_mem", type=float, default=4e9,
-                        help="Maximum memory allowance for output mosaic (bytes).")
-    parser.add_argument("--local_window", type=int, default=5, help="Window to search for broken sequences.")
-    parser.add_argument("--tile_size", type=int, default=1000, help="Tile size in pixels.")
+                        default=("ORB",), help="Set of features to use in registration.")
+    parser.add_argument("--bovw-clusters", type=int, default=500, help="Number of bovw clusters to use in global feature descriptor.")
+    parser.add_argument("--bovw-batchsize", type=int, default=1000, help="Batch size for bovw clustering.")
+    parser.add_argument("--nn-top-k", type=int, default=5, help="Number of nearest neighbors to search for in global feature matching.")
+
+    # Registration
+    parser.add_argument("--min-matches", type=int, default=10,
+                        help="Minimum number of matches to proceed with registration.")
+    parser.add_argument("--min-features", type=int, default=100,
+                        help="Minimum number of features to detect in an image.")
+    parser.add_argument("--homography-type", type=str, choices=["partial", "affine", "perspective"],
+                        default="partial", help="Type of 2D homography estimation to perform.")
+    parser.add_argument("--epsilon", type=float, default=1e-3, help="Homography determinant must be greater than this value to be considered valid.")
+    # Mosaicking
+    parser.add_argument("--min-sequence-length", type=int, default=None, help="Minimum length of sequence to mosaic.")
+    parser.add_argument("--tile-size", type=int, default=1024,
+                        help="Largest allowable size (width or height) for mosaic tile. Creates a new tile if it gets bigger.")
+    parser.add_argument("--alpha", type=float, default=1.0,
+                        help="Alpha blending scalar for merging new frames into mosaic. Default behaviour is to preserve existing canvas and append only new area.")
+    parser.add_argument("--keypoint-roi", action="store_true",
+                        help="Only allow the convex hull of the inlier keypoints to be used in mosaic.")
     return parser.parse_args()
 
 
@@ -595,6 +559,8 @@ def load_orientation_slerp(orientation_file: Path, video_time_offset: float = 0.
     Spherical linear interpolation of orientation quaternions provided by csv-like file.
     """
     df = pd.read_csv(orientation_file)
+    # Assuming your DataFrame is named df and the timestamp column is named 'timestamp'
+    df = df.sort_values(by='ts', ascending=True)
     df["pt"] = df["ts"] - video_time_offset
     return Slerp(df['ts'], Rotation.from_quat(df.loc[:, ['qx', 'qy', 'qz', 'qw']]))
 

@@ -1,6 +1,4 @@
-
-
-
+import math
 import pickle
 from abc import ABC, abstractmethod
 from os import PathLike
@@ -23,15 +21,26 @@ import networkx as nx
 import re
 import logging
 
+import inspect
+
+def copy_signature(base):
+    def decorator(func):
+        func.__signature__ = inspect.signature(base)
+        return func
+    return decorator
+
 # Get a logger for this module
-logger = logging.getLogger(__name__)
+module_logger = logging.getLogger(__name__)
 
 
 class Mapper:
+    logger = logging.getLogger(__name__)
+
     def __init__(self, output_width: int, output_height: int, alpha_blend: float = 0.5):
         assert 0.0 <= alpha_blend <= 1.0, "Alpha blend must in interval [0, 1]."
         self._alpha = alpha_blend
         self._canvas, self._canvas_mask = self._create_canvas(output_width, output_height)
+        self._flag = True
 
     def _create_canvas(self, output_width: int, output_height: int) -> tuple[npt.NDArray[np.uint8] | cv2.cuda.GpuMat,
                                                                        npt.NDArray[np.uint8] | cv2.cuda.GpuMat]:
@@ -175,7 +184,7 @@ class Mapper:
 
 
 class Mosaic(ABC):
-
+    logger = logging.getLogger(__name__)
     _load_instance = False
 
     def __new__(cls, *args, **kwargs):
@@ -189,7 +198,7 @@ class Mosaic(ABC):
                  data_path: AnyStr | PathLike | Path = None,
                  reader_params: dict[str, Any] = None,
                  preprocessing_params: Sequence[tuple[str, dict[str, Any], dict[str, Any]]] = None,
-                 feature_types: Sequence[str] = None,
+                 feature_types: Sequence[str] = ("ORB",),
                  extractor_kwargs: dict[str, Any] = None,
                  bovw_clusters: int = 500,
                  bovw_batchsize: int = 1000,
@@ -198,7 +207,9 @@ class Mosaic(ABC):
                  orientation_path: AnyStr | PathLike | Path = None,
                  orientation_time_offset: float = 0.0,
                  min_matches: int = 10,
+                 homography_type: str | registration.HomographyEstimationType = "partial",
                  epsilon: float = 1e-4,
+                 min_sequence_length: int = None,
                  alpha: float = 0.5,
                  keypoint_roi: bool = False,
                  overwrite: bool = False,
@@ -241,9 +252,12 @@ class Mosaic(ABC):
         self._orientation_time_offset = orientation_time_offset
         # Init registration
         self._min_matches = min_matches                     # Minimum number of matches for valid registration
+        homography_type = registration.HomographyEstimationType(homography_type)
+        self._homography_estimator = registration.HomographyEstimation(homography_type)
         self._epsilon = epsilon                             # Minimum perspective determinant for valid registration.
         self._matcher = registration.CompositeMatcher()     # For feature matching
         # Init blending
+        self._min_sequence_length = min_sequence_length
         self._alpha = alpha
         self._use_keypoint_roi = keypoint_roi
         # Init overrides
@@ -255,10 +269,11 @@ class Mosaic(ABC):
         cls._load_instance = True
         project_path = project_path.resolve(True)
         with open(project_path / 'mosaic.pkl', 'rb') as f:
-            logger.info(f"Restoring project from {project_path / 'mosaic.pkl'}")
+            cls.logger.info(f"Restoring project from {project_path / 'mosaic.pkl'}")
             return pickle.load(f)
 
     def save(self):
+        self.logger.info(f"Saving project at {self._project_path / 'mosaic.pkl'}")
         with open(self._project_path / 'mosaic.pkl', 'wb') as f:
             pickle.dump(self, f)
 
@@ -285,11 +300,11 @@ class Mosaic(ABC):
         return utils.load_orientation_slerp(orientation_path, self._orientation_time_offset)
 
     def extract_features(self):
-        logger.info(f"Beginning feature extraction with features: {self._feature_extractor.feature_type()}.")
+        self.logger.info(f"Beginning feature extraction with features: {self._feature_extractor.feature_type()}.")
         for ret, idx, image_name, image in self._reader_obj:
             # bad frames are skipped
             if not ret:
-                logger.debug(f"Got bad image.")
+                self.logger.warning(f"Got bad image, skipping.")
                 continue
             image = self._preprocessor_pipeline.apply(image)  # Apply preprocessing to image
             image = preprocessing.make_gray(image)  # Convert to grayscale for feature detection
@@ -362,7 +377,7 @@ class Mosaic(ABC):
 
 
 class SequentialMosaic(Mosaic):
-
+    logger = logging.getLogger(__name__)
     frame_number_extractor = re.compile(r"\d+$")
 
     # TODO: Add a healing strategy to find nice homographies between subgraphs.
@@ -383,7 +398,7 @@ class SequentialMosaic(Mosaic):
         return int(self.frame_number_extractor.search(node.name).group())
 
     def match_features(self):
-        logger.info(f"Beginning BF feature matching.")
+        self.logger.info(f"Beginning BF feature matching.")
         # Sequential matching
         num_nodes = self._model.number_of_nodes()
         # Go through each node in order, looking for features with a successor node.
@@ -412,16 +427,16 @@ class SequentialMosaic(Mosaic):
             for feature_type, matches in all_matches.items():
                 good_matches.update({feature_type: tuple(m[0] for m in matches if len(m) == 2 and m[0].distance < 0.7 * m[1].distance)})
             num_matches = sum([len(m) for m in good_matches.values()])
-            logger.debug(f"Good Matches {self._get_frame_number(node_prev)} - {self._get_frame_number(node)}: {num_matches}")
+            self.logger.debug(f"Good Matches {self._get_frame_number(node_prev)} - {self._get_frame_number(node)}: {num_matches}")
             # Perspective Homography requires at least 4 matches, if there aren't enough matches then don't create edge.
             if num_matches < self._min_matches:
-                logger.debug(f"Not enough matches {self._get_frame_number(node_prev)} - {self._get_frame_number(node)}: {num_matches} < {self._min_matches}")
+                self.logger.debug(f"Not enough matches {self._get_frame_number(node_prev)} - {self._get_frame_number(node)}: {num_matches} < {self._min_matches}")
                 continue
             self._model.register_edge(node_prev, node)
             self._model.add_matches(node_prev, node, good_matches)
 
     def registration(self):
-        logger.info(f"Beginning local registration.")
+        self.logger.info(f"Beginning local registration using {self._homography_estimator.method} homography estimator.")
         # Here, iterate through each subgraph and estimate homography.
         # If the homography quality is bad, then we prune the graph.
         to_filter = []
@@ -440,11 +455,12 @@ class SequentialMosaic(Mosaic):
                 kp_prev = cv2.KeyPoint.convert(kp_prev)
                 kp = cv2.KeyPoint.convert(kp)
                 #H, inliers = cv2.findHomography(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
-                H, inliers = cv2.estimateAffine2D(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
+                #H, inliers = cv2.estimateAffine2D(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
+                H, inliers = cv2.estimateAffinePartial2D(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
                 H = np.concatenate((H, np.array([[0, 0, 1]], dtype=float)), axis=0)
                 reproj_error = registration.compute_reprojection_error(H, kp, kp_prev)
                 frac_inliers = inliers.sum() / inliers.size
-                logger.debug(f"Registration result {node_prev.identifier} - {node.identifier} error {reproj_error:.2f}, inlier % {frac_inliers * 100:.2f}")
+                self.logger.debug(f"Registration result {node_prev.identifier} - {node.identifier} error {reproj_error:.2f}, inlier % {frac_inliers * 100:.2f}")
                 # If H isn't good, then remove the edge.
                 if not find_nice_homographies(H, self._epsilon) or H is None:
                     to_filter.append((node_prev, node))
@@ -457,11 +473,11 @@ class SequentialMosaic(Mosaic):
     def _add_orientation(self):
         orientations = self._load_orientations()
         if orientations is None:
-            logger.info("No orientation file specified. Skipping.")
+            self.logger.info("No orientation file specified. Skipping.")
             return
         K = self._intrinsics.get("K", None)
         if K is None:
-            logger.warning("No intrinsic matrix provided. Skipping orientations.")
+            self.logger.warning("No intrinsic matrix provided. Skipping orientations.")
             return
         K_inv = mosaicking.transformations.inverse_K(K)
         for node in self._model.nodes():
@@ -476,7 +492,7 @@ class SequentialMosaic(Mosaic):
             else:
                 # TODO: pt can be outside of interpolant bounds, warning the user here but could cause trouble down the
                 #  pipeline.
-                logger.warning(f"playback time outside of interpolant bounds; not adding to Node.")
+                self.logger.warning(f"playback time outside of interpolant bounds; not adding to Node.")
                 continue
             self._model.nodes[node]['H0'] = K @ R.as_matrix() @ K_inv  # Apply 3D rotation as projection homography
 
@@ -499,7 +515,7 @@ class SequentialMosaic(Mosaic):
             c = c + 1
             # Get all the subgraphs
             subgraphs = list(nx.weakly_connected_components(self._model))
-            logger.info(f"Iteration: {c}, {len(subgraphs)} subgraphs.")
+            self.logger.info(f"Iteration: {c}, {len(subgraphs)} subgraphs.")
             for subgraph in (self._model.subgraph(c).copy() for c in subgraphs):
                 if len(subgraph) < 2:
                     continue
@@ -530,17 +546,19 @@ class SequentialMosaic(Mosaic):
 
                 # Prune the graph by removing the edge that leads to the unstable node
                 pred_node = predecessors[0]
-                logger.info(f"Pruning edge: {pred_node} -> {unstable_node}")
+                self.logger.info(f"Pruning edge: {pred_node} -> {unstable_node}")
                 self._model.remove_edge(pred_node, unstable_node)
                 flag = True  # flag to search for pruning again
 
     def global_registration(self):
-        logger.info("Beginning global registration.")
+        self.logger.info("Beginning global registration.")
         self._add_orientation()  # Add in extrinsic rotations as homographies to valid Nodes.
         self._prune_unstable_graph(1e-4)  # Prune the bad absolute homographies
         # Assign the absolute homography to each node in each subgraph
+        subgraphs = list(nx.weakly_connected_components(self._model))
+        self.logger.info(f"Found {len(subgraphs)} subgraphs.")
         for subgraph in (self._model.subgraph(c).copy() for c in
-                         nx.weakly_connected_components(self._model)):
+                         subgraphs):
             H = mosaicking.core.interface._propagate_homographies(subgraph)
             image_dims = mosaicking.core.interface._get_graph_image_dimensions(subgraph)
             min_x, min_y, _, _ = get_mosaic_dimensions(H, image_dims[:, 0], image_dims[:, 1])
@@ -553,16 +571,20 @@ class SequentialMosaic(Mosaic):
 
     def _create_tile_graph(self, tile_size: tuple[int, int]) -> nx.Graph:
         """
-            Create a graph where each node represents a tile of the output mosaic.
-            Each tile will consist of frames whose warped coordinates overlap with the tile.
+        Create a graph where each node represents a tile of the output mosaic.
+        Each tile will consist of frames whose warped coordinates overlap with the tile.
 
-            :param tile_size: A tuple representing the width and height of each tile.
-            """
+        :param tile_size: A tuple representing the width and height of each tile.
+        """
+        self.logger.info("Creating tiles.")
         # Initialize variables
         tile_graph = nx.Graph()  # The graph where tiles will be nodes
         # Iterate over all stable subgraphs in the registration object
         for subgraph_index, subgraph in enumerate((self._model.subgraph(c).copy() for c in
                                                    nx.weakly_connected_components(self._model))):
+            if self._min_sequence_length is not None and len(subgraph) < self._min_sequence_length:
+                self.logger.debug(f"Skipping subgraph (too short: {len(subgraph)})")
+                continue
             # Get the topological sort of the subgraph (a valid path of transformations)
             sorted_nodes = list(nx.topological_sort(subgraph))
             sorted_H = np.stack([subgraph.nodes[n]['H'] for n in sorted_nodes], axis=0)  # Mosaic-frame Homographies for each node
@@ -571,11 +593,11 @@ class SequentialMosaic(Mosaic):
             mosaic_dims = get_mosaic_dimensions(sorted_H, image_dims[:, 0], image_dims[:, 1])
 
             # Calculate tile coordinates
-            tile_x = np.arange(0, mosaic_dims[2], tile_size[0])
-            tile_y = np.arange(0, mosaic_dims[3], tile_size[1])
-
-            for tx in tile_x:
-                for ty in tile_y:
+            tile_x = range(0, math.ceil(mosaic_dims[2]), tile_size[0])
+            tile_y = range(0, math.ceil(mosaic_dims[3]), tile_size[1])
+            self.logger.info(f"Sequence {subgraph_index}: Allocating {len(subgraph)} images to {len(tile_x)*len(tile_y)} tiles.")
+            for tile_x_idx, tx in enumerate(tile_x):
+                for tile_y_idx, ty in enumerate(tile_y):
                     # Create the bounding box for the current tile
                     tile_crns = np.array([[tx, ty],
                                           [tx + tile_size[0], ty],
@@ -584,7 +606,6 @@ class SequentialMosaic(Mosaic):
 
                     # Initialize a dict to store homographies that overlap with this tile
                     tile_frames = {}
-
                     for node, data in subgraph.nodes(data=True):
                         H = data['H']
                         width, height = node.dimensions
@@ -598,10 +619,10 @@ class SequentialMosaic(Mosaic):
                             frame_number = self._get_frame_number(node)
                             tile_frames.update({frame_number: H_tile})
                     if tile_frames:
-                        tile_graph.add_node((subgraph_index, int(tx), int(ty)), frames=tile_frames)
+                        tile_graph.add_node((subgraph_index, int(tile_x_idx), int(tile_y_idx)), frames=tile_frames)
         return tile_graph
 
-    def _get_good_keypoints(self, query_node_idx: int) -> Sequence[cv2.KeyPoint] | None:
+    def _get_good_keypoints(self, node: mosaicking.core.interface.Node) -> Sequence[cv2.KeyPoint] | None:
         """
         Finds the inlier keypoints used in matching for a particular image node. Default behaviour is to use the matches
         with the predecessor node, except when the query node is the first node in a sequence where it uses the successor..
@@ -609,7 +630,6 @@ class SequentialMosaic(Mosaic):
         :return: tuple of cv2.KeyPoint inliers or None if no predecessors or successors.
         :rtype: Sequence[cv2.KeyPoint]
         """
-        node = list(self._model.nodes)[query_node_idx]
         prev_node = next(self._model.predecessors(node), None)  # Check if the node is the first in the subsequence
         next_node = next(self._model.successors(node), None)  # Check if the node is the last in the subsequence
         features = self._model.nodes(data="features", default=None)[node]()  # Get the features for this node
@@ -644,12 +664,11 @@ class SequentialMosaic(Mosaic):
         return good_features
 
     def generate(self, tile_size: tuple[int, int] = None):
-        logger.info("Creating tiles.")
         tiles = self._create_tile_graph(tile_size)  # restructure the graph into tiles
 
         # Now iterate through the tiles
         for (subgraph_index, tile_x, tile_y), sequence in tiles.nodes(data="frames"):
-            logger.info(f"Generating sequence {subgraph_index}: tile {tile_x}x{tile_y}")
+            self.logger.info(f"Generating sequence {subgraph_index}: tile {tile_x}x{tile_y}")
             #  subgraph_index: which sequence this belongs to
             #  tile_x: top left corner of the tile in mosaic coordinates
             #  tile_y: top left corner of the tile in mosaic coordinates
@@ -664,7 +683,7 @@ class SequentialMosaic(Mosaic):
                 if pos not in sequence:
                     continue
                 frame = self._preprocessor_pipeline.apply(frame)
-                keypoints = self._get_good_keypoints(pos) if self._use_keypoint_roi else None
+                keypoints = self._get_good_keypoints([n for n in self._model.nodes if n.name == name][0]) if self._use_keypoint_roi else None
                 mapper.update(frame, sequence[pos], None, keypoints)
                 if isinstance(frame, cv2.cuda.GpuMat):
                     frame.release()
@@ -771,3 +790,49 @@ def alpha_blend_cuda(img1: cv2.cuda.GpuMat, img2: cv2.cuda.GpuMat, alpha_gpu: cv
     blended = cv2.cuda.alphaComp(img1, img2, cv2.cuda.ALPHA_OVER)
 
     return cv2.cuda.cvtColor(blended, cv2.COLOR_BGRA2BGR)
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    args = utils.parse_args()
+    start = args.start_time_secs or args.start_playtime or args.start_frame
+    finish = args.finish_time_secs or args.finish_playtime or args.finish_frame
+    frameskip = args.frame_skip
+    reader_params = None
+    mosaicking.HAS_CUDA = mosaicking.HAS_CUDA and args.force_cuda_off
+    mosaicking.HAS_CODEC = mosaicking.HAS_CODEC and args.force_cudacodec_off
+    if start or finish or frameskip:
+        reader_params = {}
+        if start:
+            reader_params.update({"start": start})
+        if finish:
+            reader_params.update({"finish": finish})
+        if frameskip:
+            reader_params.update({"frame_skip": frameskip})
+    calibration = None
+    if args.calibration:
+        calibration = utils.parse_intrinsics(args.calibration)
+    mos = SequentialMosaic(project_path=args.project,
+                           data_path=args.video,
+                           reader_params=reader_params,
+                           feature_types=args.feature_types,
+                           bovw_clusters=args.bovw_clusters,
+                           bovw_batchsize=args.bovw_batchsize,
+                           nn_top_k=args.nn_top_k,
+                           intrinsics=calibration,
+                           orientation_path=args.orientation_path,
+                           orientation_time_offset=args.orientation_time_offset,
+                           min_matches=args.min_matches,
+                           homography_type=args.homography_type,
+                           epsilon=args.epsilon,
+                           min_sequence_length=args.min_sequence_length,
+                           alpha=args.alpha,
+                           keypoint_roi=args.keypoint_roi,
+                           overwrite=args.overwrite,
+                           force_cpu=args.force_cpu
+                           )
+    mos.extract_features()
+    mos.match_features()
+    mos.registration()
+    mos.global_registration()
+    mos.generate((args.tile_size, args.tile_size))
+    mos.save()

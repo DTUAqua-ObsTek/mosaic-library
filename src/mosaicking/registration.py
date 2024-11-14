@@ -13,6 +13,7 @@ import mosaicking.core.interface
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.neighbors import NearestNeighbors
 from shapely.geometry import Polygon
+from enum import Enum
 
 import logging
 
@@ -364,42 +365,77 @@ def create_nn(graph: mosaicking.core.interface.ImageGraph, top_k: int) -> dict[s
         nn_models[feature_type] = nn
     return nn_models
 
+# NOTE: shapely works with 64 bit, while cv2 appears to overflow with very large numbers
 # def bbox_overlap(shape_1: npt.NDArray[int], shape_2: npt.NDArray[int]) -> bool:
 #     rect_1 = cv2.minAreaRect(shape_1)
 #     rect_2 = cv2.minAreaRect(shape_2)
 #     intersection_type, _ = cv2.rotatedRectangleIntersection(rect_1, rect_2)
 #     return intersection_type > cv2.INTERSECT_NONE
 
-
 def bbox_overlap(shape_1: npt.NDArray[int], shape_2: npt.NDArray[int]) -> bool:
     # Create Polygon objects from the corner points
     poly_1 = Polygon(shape_1)
     poly_2 = Polygon(shape_2)
-
     # Check if the polygons intersect
     return poly_1.intersects(poly_2)
 
-def compute_reprojection_error(H, kp_src, kp_dst):
+
+class HomographyEstimationType(Enum):
+    PERSPECTIVE = "perspective"
+    AFFINE = "affine"
+    PARTIAL = "partial"
+
+    @staticmethod
+    def from_string(s: str) -> 'HomographyEstimationType':
+        try:
+            return HomographyEstimationType(s.lower())
+        except ValueError:
+            raise ValueError(f"Unknown homography type: {s.lower()}")
+
+    def __str__(self) -> str:
+        return self.value
+
+
+class HomographyEstimation:
+    def __init__(self, method: HomographyEstimationType | str):
+        """Initialize with a HomographyEstimationType or a string representing it."""
+        if isinstance(method, HomographyEstimationType):
+            self.method = method
+        elif isinstance(method, str):
+            self.method = HomographyEstimationType.from_string(method)
+        else:
+            raise ValueError("method must be either a HomographyEstimationType or a string")
+
+    def __call__(self, src_points: npt.NDArray[float], dst_points: npt.NDArray[float], *args, **kwargs) -> tuple[npt.NDArray[float], npt.NDArray[int]]:
+        """Apply the selected homography method to the given points."""
+        if self.method == HomographyEstimationType.PERSPECTIVE:
+            return cv2.findHomography(src_points, dst_points, *args, **kwargs)
+        elif self.method == HomographyEstimationType.AFFINE:
+            H, inliers = cv2.estimateAffine2D(src_points, dst_points, *args, **kwargs)
+        elif self.method == HomographyEstimationType.PARTIAL:
+            H, inliers = cv2.estimateAffine2D(src_points, dst_points)
+        else:
+            raise ValueError(f"Unsupported homography method: {self.method}")
+        return np.concatenate((H, [[0., 0., 1.]]), axis=0), inliers
+
+def compute_reprojection_error(H: npt.NDArray[float], kp_src: npt.NDArray[float], kp_dst: npt.NDArray[float]) -> float:
     """
     Compute the reprojection error given a homography H and two sets of corresponding keypoints.
 
-    :param H: Homography matrix (3x3) or affine matrix (3x2).
+    :param H: Homography matrix (3x3) or affine matrix (2x3).
     :param kp_src: Keypoints from the source image (Nx2).
     :param kp_dst: Corresponding keypoints from the destination image (Nx2).
     :return: Mean reprojection error.
     """
+    if H.shape[0] < 3:
+        H = np.concatenate((H, [[0., 0., 1.]]), axis=0)
     # Convert keypoints to homogeneous coordinates (Nx3)
-    kp_src_h = np.hstack([kp_src, np.ones((kp_src.shape[0], 1))])
-
-    # Transform the source keypoints using the homography
-    kp_src_transformed = (H @ kp_src_h.T).T
-
-    # Convert homogeneous coordinates back to Euclidean (divide by the last element)
-    kp_src_transformed = kp_src_transformed[:, :2] / kp_src_transformed[:, 2:3]
-
+    kp_src_h = cv2.convertPointsToHomogeneous(kp_src).squeeze()
+    kp_src_transformed_h = (H @ kp_src_h.T).T
+    # Convert homogeneous coordinates to non-homogeneous form
+    kp_src_transformed = cv2.convertPointsFromHomogeneous(kp_src_transformed_h).squeeze()
     # Compute the Euclidean distance (reprojection error) between the transformed and destination keypoints
-    reprojection_errors = np.linalg.norm(kp_src_transformed - kp_dst, axis=1)
-
+    reprojection_errors = np.linalg.norm(kp_dst - kp_src_transformed, axis=1)
     # Return the mean reprojection error
     mean_error = np.mean(reprojection_errors)
     return mean_error
