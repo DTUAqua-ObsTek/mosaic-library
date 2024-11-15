@@ -32,6 +32,10 @@ class ImageGraph(nx.DiGraph):
         if "db_dir" in self.graph:
             self.new_db(kwargs["db_dir"])
 
+    @property
+    def db_path(self) -> Path:
+        return self._db_backend.db_path
+
     def new_db(self, db_dir: Path):
         db_dir.mkdir(exist_ok=True, parents=True)
         self._db_backend = SQLDB(db_dir / "mosaicking.db")

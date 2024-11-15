@@ -2,65 +2,62 @@ import tempfile
 import unittest
 
 import mosaicking.transformations
-from mosaicking import mosaic, preprocessing
-import pickle
+from mosaicking import mosaic
+import mosaicking
 import numpy as np
 from scipy.spatial.transform import Rotation
 import logging
 from pathlib import Path
+import yaml
 
 logging.basicConfig(level=logging.DEBUG)
 
 class TestMosaic(unittest.TestCase):
 
     def setUp(self):
-        K = np.array([[543.3327734182214, 0.0, 489.02536042247897],
-                        [0.0, 542.398772982566, 305.38727712002805],
-                        [0.0, 0.0, 1.0]])
-        D = np.array([-0.1255945656257394, 0.053221287232781606, 9.94070021080493e-05,
-    9.550660927242349e-05])
-        roi = (640 - 300, 512 - 250, 600, 500)
-        self._preprocessors = (#("undistort", {"K": K, "D": D}, None),
-                               ("crop", {"roi": roi}, None),
-                               #("scaling", {"scaling": 0.5}, None),
-                               #("clahe", {"clipLimit": 100.0, "tileGridSize": (11, 11)}, None),
-                               )
-        self._mosaic = mosaic.SequentialMosaic(data_path="../Data/export_harbor_sequence_2.mp4",
-                                               output_path=Path(tempfile.mkdtemp()),
-                                               #preprocessing_params=self._preprocessors,
-                                               feature_types=("ORB",), #, "SIFT"),
-                                               intrinsics={"K": K, "D": D},
-                                               orientation_path="../Data/tf_cam_ned_harbor_sequence_2.csv",
-                                               time_offset=1523958586.902587138,
-                                               verbose=False,
-                                               caching=False,
-                                               force_cpu=False,
-                                               player_params={"finish": 500})
+        data_path = Path(f"data/sparus_snippet.mp4").resolve()
+        output_path = Path(tempfile.mkdtemp())
+        orientation_path = Path(f"data/sparus_snippet.csv").resolve()
+        orientation_time_offset_path = Path("data/sparus_time_offset.yaml").resolve()
+        with open(orientation_time_offset_path, "r") as f:
+            orientation_time_offset = yaml.safe_load(f)["video"]
+        K = np.array(
+            [405.6384738851233, 0, 189.9054317917407, 0, 405.588335378204, 139.9149578253755, 0, 0, 1]).reshape((3, 3))
+        D = np.array([-0.3670656233416921, 0.203001968694465, 0.003336917744124004, -0.000487426354679637, 0])
+        self._preprocessors = (("clahe", dict(), None),)
+        self._mosaic = mosaic.SequentialMosaic(data_path=data_path,
+                                project_path=output_path,
+                                feature_types=("ORB",),  # , "SIFT"),
+                                intrinsics={"K": K, "D": D},
+                                orientation_path=orientation_path,
+                                orientation_time_offset=orientation_time_offset,
+                                force_cpu=True,
+                                keypoint_roi=True,
+                                bovw_clusters=5,
+                                alpha=1.0)
 
     def tearDown(self):
         # Remove the temporary directory and database
-        db_dir = self._mosaic._registration_obj.graph["db_dir"]
+        db_dir = self._mosaic._model.graph["db_dir"]
         for child in db_dir.iterdir():
             child.unlink()
         db_dir.rmdir()
 
     def test_mosaic_save(self):
         self._mosaic.save()
+        test_mosaic = mosaic.SequentialMosaic.load(self._mosaic._project_path)
 
     def test_mosaic_feature_extraction(self):
         self._mosaic.extract_features()
-        print(";)")
 
     def test_mosaic_matching(self):
         self._mosaic.extract_features()
         self._mosaic.match_features()
-        print(";)")
 
     def test_mosaic_registration(self):
         self._mosaic.extract_features()
         self._mosaic.match_features()
         self._mosaic.registration()
-        print(";)")
 
     def test_mosaic_global(self):
         self._mosaic.extract_features()
@@ -72,22 +69,17 @@ class TestMosaic(unittest.TestCase):
         self._mosaic.extract_features()
         self._mosaic.match_features()
         self._mosaic.registration()
-        # TODO: something strange hapenning here at frame 327
         self._mosaic.global_registration()
         self._mosaic.generate((4096, 4096))
-        print(";)")
+
+    def test_bovw(self):
+        self._mosaic.extract_features()
+        self._mosaic.global_features()
+        self._mosaic.node_knn(0)
 
     def test_mosaic_preprocessing(self):
         self._mosaic._preprocessor_pipeline, self._mosaic._preprocessor_args = self._mosaic._create_preprocessor_obj(self._preprocessors)
         self._mosaic.extract_features()
-
-    def test_save_graph(self):
-        self._mosaic.extract_features()
-        self._mosaic.match_features()
-        self._mosaic.registration()
-        self._mosaic.global_registration()
-        with open("/tmp/graph.pkl", "wb") as f:
-            pickle.dump(self._mosaic._registration_obj, f)
 
     def test_corner_warp(self):
         R = Rotation.from_euler('ZYX', (90, 0, 0), degrees=True)

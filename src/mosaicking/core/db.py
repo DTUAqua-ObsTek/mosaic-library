@@ -128,6 +128,10 @@ class SQLDB(DB):
         self._db_path = db_path
         self._initialize_database()
 
+    @property
+    def db_path(self) -> Path:
+        return self._db_path
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.execute("PRAGMA foreign_keys = ON")  # Ensure foreign keys are enforced
@@ -371,7 +375,7 @@ class SQLDB(DB):
             return matches_by_type
 
     def add_edge_registration(self, node_from: Node, node_to: Node, registration: npt.NDArray[float],
-                              reproj_error: float | None, frac_inliers: float | None) -> None:
+                              reproj_error: float | None = None, frac_inliers: float | None = None) -> None:
         """
         Add or update a calculated registration to an existing edge.
         :param node_from: Source node.

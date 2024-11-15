@@ -15,7 +15,7 @@ class TestRegistrationModule(unittest.TestCase):
         cv2.circle(self._orb_image, (200, 200), 50, (255, 255, 255), -1)
         cv2.rectangle(self._orb_image, (300, 300), (400, 400), (255, 255, 255), -1)
         cv2.line(self._orb_image, (100, 400), (400, 100), (255, 255, 255), 3)
-        self._detectors = mosaicking.registration.SiftDetector(), mosaicking.registration.OrbDetector()
+        self._detectors = mosaicking.registration.BriskDetector(), mosaicking.registration.OrbDetector()
 
     def test_get_keypoints_descriptors(self):
         kp, des = registration.get_keypoints_descriptors(self._orb_image, self._detectors, None)

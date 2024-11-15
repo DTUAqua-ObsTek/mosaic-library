@@ -222,6 +222,10 @@ class Mosaic(ABC):
             self.__dict__.update(loaded_instance.__dict__)
             return  # Skip reinitializing if loading
 
+        # Init overrides
+        self._overwrite = overwrite  # Overwrite db entries
+        self._force_cpu = force_cpu  # Force CPU use
+
         self._project_path = project_path
         self._data_path = data_path
         # Init data reader
@@ -260,9 +264,7 @@ class Mosaic(ABC):
         self._min_sequence_length = min_sequence_length
         self._alpha = alpha
         self._use_keypoint_roi = keypoint_roi
-        # Init overrides
-        self._overwrite = overwrite  # Overwrite db entries
-        self._force_cpu = force_cpu  # Force CPU use
+
 
     @classmethod
     def load(cls, project_path: AnyStr | PathLike | Path = None):
@@ -386,7 +388,7 @@ class SequentialMosaic(Mosaic):
     # Private methods
     def _create_reader_obj(self) -> utils.VideoPlayer:
         player_params = {} if self._reader_params is None else self._reader_params
-        if mosaicking.HAS_CUDA and mosaicking.HAS_CODEC:
+        if not self._force_cpu and mosaicking.HAS_CUDA and mosaicking.HAS_CODEC:
             return utils.CUDAVideoPlayer(self._data_path, **player_params)
         return utils.CPUVideoPlayer(self._data_path, **player_params)
 
