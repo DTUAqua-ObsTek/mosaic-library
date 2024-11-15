@@ -1,7 +1,8 @@
 import cv2
 import mosaicking.registration
-from mosaicking import utils, preprocessing, registration, core, splitter
-from mosaicking.core import inverse_K
+import mosaicking.transformations
+from mosaicking import utils, preprocessing, registration, splitter
+from mosaicking.transformations import inverse_K
 import numpy as np
 from itertools import accumulate, chain
 from scipy.spatial.transform import Rotation
@@ -73,13 +74,14 @@ def mask_color_image(image: cv2.cuda.GpuMat, mask: cv2.cuda.GpuMat) -> cv2.cuda.
 
 
 def main():
+    max_mem = 4e9  # Max allowed memory 4 GB
+
     args = utils.parse_args()
     args.video.resolve(True)
-    if not args.output_directory.exists():
-        args.output_directory.mkdir()
+    args.project.mkdir(exist_ok=True, parents=True)
 
     # Load in orientations if available
-    orientation_lut = utils.load_orientation(args.orientation_file) if args.orientation_file else None
+    orientation_lut = utils.load_orientation_slerp(args.orientation_path, args.orientation_time_offset) if args.orientation_path and args.orientation_time_offset else None
     # Create the video reader object
     reader = utils.CUDAVideoPlayer(args.video)
 
@@ -90,8 +92,15 @@ def main():
     fps = reader.get(cv2.CAP_PROP_FPS)
 
     # Load in intrinsic data if available
-    K, D = utils.parse_intrinsics(args, width, height)
-    # Get the inverse intrinsic matrix for alter use
+    K = np.eye(3)
+    K[[0, 1], [0, 1]] = width * height
+    K[[0, 1], [2, 2]] = [width / 2, height / 2]
+    D = np.zeros(5)
+    if args.calibration:
+        calibration = utils.parse_intrinsics(args.calibration)
+        K = calibration.get("K")
+        D = calibration.get("D")
+        # Get the inverse intrinsic matrix for alter use
     K_inv = inverse_K(K)
 
     # Undistort remapper
@@ -102,10 +111,10 @@ def main():
     ymap.upload(remappings[1])
 
     # Load in detectors
-    detector = registration.CompositeDetector(mosaicking.registration.parse_detectors(args.features))
+    detector = registration.CompositeDetector(args.feature_types, nfeatures=4000)
     matcher = registration.CompositeMatcher()
 
-    keypoints, descriptors = [], []
+    features = []
 
     timer = cv2.TickMeter()  # Performance Timer
 
@@ -113,41 +122,32 @@ def main():
 
     ## Part 1: Extract Features
     # If output does not have a feature .pkl file, then perform extraction
-    if not args.output_directory.joinpath("features.pkl").exists():
+    if not args.project.joinpath("features.pkl").exists():
         print(f"Performing feature extraction.")
         timer.start()
-        for frame_no, (ret, frame) in enumerate(reader):
+        for ret, frame_no, name, frame in reader:
             print(f"Frame: {frame_no:05d}")
             # stop on bad frame
             if not ret:
                 break
             frame = preprocessing.make_bgr(frame)  # Convert to BGR
             frame = cv2.cuda.remap(frame, xmap, ymap, cv2.INTER_CUBIC, cv2.cuda.GpuMat())  # Undistort image
-            kps, descs = detector.detect(frame)  # Feature detection
+            features.append(detector.detect(frame))  # Feature extraction
             frame.release()
-            keypoints.append(kps)  # Append the keypoints
-            descriptors.append(descs)  # Append the descriptors
         reader = None  # Free the reader object
-        keypoints = tuple(keypoints)
-        descriptors = tuple(descriptors)
-        with open(args.output_directory.joinpath("features.pkl"), "wb") as f:
-            tmp = []
-            for feature_sets in keypoints:
-                features = []
-                for feature_set in feature_sets:
-                    features.append(cv2.KeyPoint.convert(feature_set)) # convert to numpy resource for pickling.
-                tmp.append(tuple(features))
-            pickle.dump((tmp, descriptors), f)
+        with open(args.project.joinpath("features.pkl"), "wb") as f:
+            for i, feature_set in enumerate(features):
+                for feature_type in args.feature_types:
+                    feature_set[feature_type]["keypoints"] = cv2.KeyPoint.convert(feature_set[feature_type]["keypoints"])
+                features[i] = feature_set
+            pickle.dump(features, f)
     else:
-        with open(args.output_directory.joinpath("features.pkl"), "rb") as f:
-            tmp, descriptors = pickle.load(f)
-            keypoints = []
-            for feature_sets in tmp:
-                kp = []
-                for feature_set in feature_sets:
-                    kp.append(cv2.KeyPoint.convert(feature_set))
-                keypoints.append(tuple(kp))
-            keypoints = tuple(keypoints)
+        with open(args.project.joinpath("features.pkl"), "rb") as f:
+            features = pickle.load(f)
+            for i, feature_set in enumerate(features):
+                for feature_type in args.feature_types:
+                    feature_set[feature_type]["keypoints"] = cv2.KeyPoint.convert(feature_set[feature_type]["keypoints"])
+                features[i] = feature_set
     timer.stop()
     print(f"Feature Extraction took {timer.getTimeSec():.2f} seconds.")
     timer.reset()
@@ -159,14 +159,23 @@ def main():
     sequences = []
     matches = []
     # Go through each image pair sequentially
-    for idx, (desc_prev, desc) in enumerate(zip(descriptors[:-1], descriptors[1:])):
-        if desc is None or desc_prev is None:
+    for idx, (feature_set_prev, feature_set) in enumerate(zip(features[:-1], features[1:])):
+        if not feature_set_prev or not feature_set:
             sequences.append(tuple(matches))
             continue
-        all_matches = matcher.knn_match(desc, desc_prev)  # Find 2 nearest matches
-        good_matches = tuple(m[0] for m in all_matches if len(m) == 2 and m[0].distance < 0.7 * m[1].distance)  # Candidate matches must pass Lowe's distance ratio test
+        descriptors_prev = {feature_type: extracted_features['descriptors'] for feature_type, extracted_features in
+                            feature_set_prev.items()}
+        descriptors = {feature_type: extracted_features['descriptors'] for feature_type, extracted_features in
+                       feature_set.items()}
+        all_matches = matcher.knn_match(descriptors, descriptors_prev)  # Find 2 nearest matches
+        good_matches = dict()
+        # Apply Lowe's distance ratio test to acquire good matches.
+        for feature_type, found_matches in all_matches.items():
+            good_matches.update(
+                {feature_type: tuple(m[0] for m in found_matches if len(m) == 2 and m[0].distance < 0.7 * m[1].distance)})
+        num_matches = sum([len(m) for m in good_matches.values()])
         # Perspective Homography requires at least 4 matches, if there aren't enough matches, then we should search (maybe bag of words)
-        if len(good_matches) < 10:
+        if num_matches < args.min_matches:
             sequences.append(tuple(matches))
             matches = []
             continue
@@ -218,14 +227,21 @@ def main():
     sequence_graphs = []
     for seq, ((start, stop), sequence) in enumerate(zip(sequence_idx, sequences)):
         homography_graph = []
-        for pair_no, (kp_prev, kp, match) in enumerate(zip(keypoints[start:stop-1], keypoints[start+1:stop], sequence)):
-            kp_prev = cv2.KeyPoint.convert(tuple(chain(*kp_prev)))
-            kp = cv2.KeyPoint.convert(tuple(chain(*kp)))
-            idx = np.array(tuple((m.queryIdx, m.trainIdx) for m in match), dtype=int)
+        for pair_no, (feature_set_prev, feature_set, match) in enumerate(zip(features[start:stop-1], features[start+1:stop], sequence)):
+            kp = tuple(feature_set[feature_type]['keypoints'] for feature_type in args.feature_types)
+            kp_prev = tuple(feature_set_prev[feature_type]['keypoints'] for feature_type in args.feature_types)
+            kp = tuple(chain(*kp))
+            kp_prev = tuple(chain(*kp_prev))
+            kp = np.array(kp) if not isinstance(kp[0], cv2.KeyPoint) else cv2.KeyPoint.convert(kp)
+            kp_prev = np.array(kp_prev) if not isinstance(kp_prev[0], cv2.KeyPoint) else cv2.KeyPoint.convert(kp_prev)
+            idx = np.array(tuple((m.queryIdx, m.trainIdx) for m in match[feature_type] for feature_type in args.feature_types))
             src = kp[idx[:, 0], :]  # points to be transformed
             dst = kp_prev[idx[:, 1], :]  # points to align
-            H, inliers = cv2.findHomography(src, dst, cv2.RANSAC, 3.0)
-            if H is None:
+            # align points in current frame to points in previous frame
+            H, inliers = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=1.0)
+            if H is not None:
+                H = np.concatenate((H, ((0., 0., 1.),)), axis=0)
+            if H is None or not mosaicking.mosaic.find_nice_homographies(H, args.epsilon):
                 sequence_graphs.append(tuple(homography_graph))
                 continue
             homography_graph.append(H)
@@ -244,7 +260,7 @@ def main():
     for seq, ((start, stop), sequence_graph) in enumerate(zip(sequence_idx, sequence_graphs)):
         # If orientation is provided, then apply it to the reference image (otherwise just I)
         if orientation_lut:
-            pt = args.time_offset + start / fps
+            pt = args.orientation_time_offset + start / fps
             if abs(pt - orientation_lut.times.min()) < 10e-3:
                 R = orientation_lut.rotations[0]
             else:
@@ -255,27 +271,28 @@ def main():
         # If the sequence graph is empty, then only apply the initial transformation
         if not sequence_graph:
             H = np.stack((H1, ), axis=0)
-            H = core.homogeneous_scaling(args.scale_factor)[None, ...] @ H
+            # Disabled resizing for now
+            # H = mosaicking.transformations.homogeneous_scaling(args.scale_factor)[None, ...] @ H
             absolute_sequence_graphs.append(H)
             continue
         H = np.stack((H1, ) + sequence_graph, axis=0)  # stack the entire sequence including first frame homography
         H = np.array(tuple(accumulate(H, np.matmul)))  # Propagate the homographys to make the absolute pose graph
         xmin, ymin, _, _ = get_mosaic_dimensions(H, width, height)
-        t = core.homogeneous_translation(-xmin, -ymin)
+        t = mosaicking.transformations.homogeneous_translation(-xmin, -ymin)
         H = t[None, ...] @ H  # Apply transformation to the homographies to reference to top left corner of mosaic.
-        s = core.homogeneous_scaling(args.scale_factor)
-        H = s[None, ...] @ H  # Scale the homography by the scale factor
+        #s = mosaicking.transformations.homogeneous_scaling(args.scale_factor)
+        #H = s[None, ...] @ H  # Scale the homography by the scale factor
         # Calculate the dimensions of the output mosaic
         xmin, ymin, output_width, output_height = get_mosaic_dimensions(H, width, height)
         # Resize the mosaic if the mosaic memory consumption will be too high
-        flag = output_width * output_height * 3 * 1 > (args.max_mem * 1.01)
+        flag = output_width * output_height * 3 * 1 > (max_mem * 1.01)
         while flag:
-            sf = (args.max_mem / (output_width * output_height * 3 * 1)) ** 0.5
+            sf = (max_mem / (output_width * output_height * 3 * 1)) ** 0.5
             print(f"Calculated size {output_width * output_height * 3e-6:.1f} MB, downsizing by {sf:.5f}")
-            H = core.homogeneous_scaling(sf)[None, ...] @ H
+            H = mosaicking.transformations.homogeneous_scaling(sf)[None, ...] @ H
             xmin, ymin, output_width, output_height = get_mosaic_dimensions(H, width, height)
             print(f"New dims {output_width}x{output_height}\nNew MEM {output_width * output_height * 3e-6:.1f} MB")
-            flag = output_width * output_height * 3 * 1 > (args.max_mem * 1.01)
+            flag = output_width * output_height * 3 * 1 > (max_mem * 1.01)
         absolute_sequence_graphs.append(H)  # Append to the list
     absolute_sequence_graphs = tuple(absolute_sequence_graphs)  # immutable
 
@@ -316,27 +333,16 @@ def main():
 
 
     # Part 5: Build each tile
-    for sequence_tile_assignment in sequence_tile_assignments:
-        num_tiles = len(sequence_tile_assignment)
-        for tile in sequence_tile_assignment:
-            ret = True
-            c = 0
-            reader = cv2.cudacodec.createVideoReader(str(args.video))
-            while ret:
-                ret, frame = reader.nextFrame()  # Get frame
-                c = c + 1
-        print("what now.")
-
-
     print(f"Building mosaics from sequences.")
     timer.start()
     reader = utils.CUDAVideoPlayer(args.video)
     # Outer loop to go over each sequence
-    for seq, tile_assignment, absolute_sequence_graph in enumerate(zip(tile_assignments, absolute_sequence_graphs)):
+    for seq, (tile_assignment, absolute_sequence_graph) in enumerate(zip(sequence_tile_assignments, absolute_sequence_graphs)):
         if absolute_sequence_graph.shape[0] < 2:
             reader.read()
             continue
         xmin, ymin, output_width, output_height = get_mosaic_dimensions(absolute_sequence_graph, width, height)
+        output_height, output_width = np.ceil(output_height).astype(int), np.ceil(output_width).astype(int)
         # Begin composing the output mosaic
         output = cv2.cuda.GpuMat()
         output.upload(np.zeros((output_height, output_width, 3), dtype=np.uint8))
@@ -346,19 +352,12 @@ def main():
         mask = cv2.cuda.GpuMat()
         mask.upload(255 * np.ones((height, width), dtype=np.uint8))
 
-        # Window object
-        if args.show_mosaic:
-            cv2.namedWindow("output", cv2.WINDOW_NORMAL)
-        if args.demo:
-            writer = cv2.cudacodec.createVideoWriter(str(args.output_directory.joinpath(f"mosaic_{args.video.stem}_{seq:05d}{args.video.suffix}")),
-                                                     (output_width, output_height), cv2.cudacodec.HEVC, fps,
-                                                     cv2.cudacodec.COLOR_FORMAT_BGR)
         # Mosaic each sequence
         for idx, H in enumerate(absolute_sequence_graph):
-            ret, frame = reader.nextFrame()  # Get frame
+            ret, frame_no, name, frame = reader.read()  # Get frame
             frame = cv2.cuda.cvtColor(frame, cv2.COLOR_BGRA2BGR)  # Convert to BGR
             frame = cv2.cuda.remap(frame, xmap, ymap, cv2.INTER_CUBIC, cv2.cuda.GpuMat())  # Undistort
-            frame = clahe.apply_color(frame)  # CLAHE on color channels.
+            frame = clahe.apply(frame)  # CLAHE on color channels.
             warped = cv2.cuda.warpPerspective(frame, H, (output_width, output_height), None, cv2.INTER_CUBIC,
                                               borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
             warped_mask = cv2.cuda.warpPerspective(mask, H,
@@ -381,6 +380,7 @@ def main():
             # Blend the intersecting regions
             # Prepare an alpha blending mask
             alpha_gpu = cv2.cuda.normalize(mask_intersect, 0.0, 1.0, cv2.NORM_MINMAX, cv2.CV_32F, cv2.cuda.GpuMat())
+            alpha_gpu = alpha_gpu.convertTo(alpha_gpu.type(), alpha=args.alpha)
             # Alpha blend the intersecting region
             blended = alpha_blend_cuda(output, warped, alpha_gpu)
             # Convert to 8UC3
@@ -388,11 +388,6 @@ def main():
                cv2.cuda.normalize(channel, 0.0, 255.0, cv2.NORM_MINMAX, cv2.CV_8U, cv2.cuda.GpuMat()) for channel in
                cv2.cuda.split(blended)), cv2.cuda.GpuMat())
             blended.copyTo(mask_intersect, output)
-            if args.demo:
-                writer.write(output)
-            if args.show_mosaic:
-                cv2.imshow("output", output.download())
-                cv2.waitKey(30)
             frame.release()
             warped.release()
             warped_mask.release()
@@ -404,11 +399,7 @@ def main():
             alpha_gpu.release()
             blended.release()
 
-        if args.show_mosaic:
-            cv2.destroyWindow("output")
-        if args.demo:
-            writer.release()
-        write_success = cv2.imwrite(str(args.output_directory.joinpath(f"mosaic_{args.video.stem}_{seq:05d}.png")), output.download())
+        write_success = cv2.imwrite(str(args.project.joinpath(f"mosaic_{args.video.stem}_{seq:05d}.png")), output.download())
         output.release()
         output_mask.release()
         mask.release()

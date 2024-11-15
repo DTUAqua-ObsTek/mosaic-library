@@ -24,7 +24,7 @@ dependencies = [
     "pyyaml",
     "scikit-learn",
     "scipy",
-    "h5py"
+    "shapely"
 ]
 
 [project.optional-dependencies]
