@@ -15,10 +15,10 @@ logging.basicConfig(level=logging.DEBUG)
 class TestMosaic(unittest.TestCase):
 
     def setUp(self):
-        data_path = Path(f"data/sparus_snippet.mp4").resolve()
+        data_path = Path(__file__).parent / 'data' / "sparus_snippet.mp4"
         output_path = Path(tempfile.mkdtemp())
-        orientation_path = Path(f"data/sparus_snippet.csv").resolve()
-        orientation_time_offset_path = Path("data/sparus_time_offset.yaml").resolve()
+        orientation_path = Path(__file__).parent / 'data' / "sparus_snippet.csv"
+        orientation_time_offset_path = Path(__file__).parent / 'data' / "sparus_time_offset.yaml"
         with open(orientation_time_offset_path, "r") as f:
             orientation_time_offset = yaml.safe_load(f)["video"]
         K = np.array(

@@ -6,7 +6,7 @@ from pathlib import Path
 
 class TestVideoPlayer(unittest.TestCase):
     def setUp(self):
-        self._video = Path("data/sparus_snippet.mp4")
+        self._video = self._video = Path(__file__).parent / 'data' / "sparus_snippet.mp4"
 
     def test_full_playback(self):
         """
@@ -85,7 +85,7 @@ class TestVideoPlayer(unittest.TestCase):
 @unittest.skipIf(not mosaicking.HAS_CODEC, "Skipping CUDAVideoPlayer tests: cv2.cudacodec is not available.")
 class TestCUDAVideoPlayer(unittest.TestCase):
     def setUp(self):
-        self._video = Path("data/aqualoc_snippet.mp4")
+        self._video = Path(__file__).parent / 'data' / "aqualoc_snippet.mp4"
 
     def test_full_playback(self):
         """
