@@ -793,8 +793,9 @@ def alpha_blend_cuda(img1: cv2.cuda.GpuMat, img2: cv2.cuda.GpuMat, alpha_gpu: cv
 
     return cv2.cuda.cvtColor(blended, cv2.COLOR_BGRA2BGR)
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+
+def main():
+    logging.basicConfig(level=logging.INFO)
     args = utils.parse_args()
     start = args.start_time_secs or args.start_playtime or args.start_frame
     finish = args.finish_time_secs or args.finish_playtime or args.finish_frame
@@ -832,9 +833,14 @@ if __name__ == '__main__':
                            overwrite=args.overwrite,
                            force_cpu=args.force_cpu
                            )
-    mos.extract_features()
-    mos.match_features()
-    mos.registration()
-    mos.global_registration()
+    if args.overwrite or not args.project.join("mosaic.pkl").exists() or not args.project.join("mosaicking.db").exists():
+        mos.extract_features()
+        mos.match_features()
+        mos.registration()
+        mos.global_registration()
     mos.generate((args.tile_size, args.tile_size))
     mos.save()
+
+
+if __name__ == '__main__':
+    main()

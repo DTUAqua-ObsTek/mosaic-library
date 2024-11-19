@@ -36,6 +36,10 @@ opencv = ["opencv-contrib-python"]
 "Github" = "https://github.com/DTUAqua-ObsTek/mosaic-library"
 "Bug Tracker Github" = "https://github.com/DTUAqua-ObsTek/mosaic-library/issues"
 
+[project.scripts]
+mosaicking-mosaic = "mosaicking.mosaic:main"
+mosaicking-calibration = "mosaicking.calibration:main"
+
 [tool.setuptools]
 include-package-data = true
 

@@ -1,0 +1,3 @@
+# Run a basic mosaic on 1 s of test data
+# output to ./fishes_out folder
+mosaicking-mosaic data/mosaicking/fishes.mp4 fishes_output --finish-frame 60

@@ -71,52 +71,59 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force-cudacodec-off", action="store_false", help="Disable CUDA codec operations.")
 
     # Video Player Arguments
-    start_time_group = parser.add_mutually_exclusive_group()
+    video_player_args = parser.add_argument_group("Video Player Params")
+    start_time_group = video_player_args.add_mutually_exclusive_group()
     start_time_group.add_argument("--start-time-secs", metavar="START", type=float, help="Time (secs) to start from.")
     start_time_group.add_argument("--start-frame", metavar="START", type=int, help="Frame number to start from.")
     start_time_group.add_argument("--start-playtime", metavar="START", type=str, help="Playback time HH:MM:SS to start from.")
-    finish_time_group = parser.add_mutually_exclusive_group()
+    finish_time_group = video_player_args.add_mutually_exclusive_group()
     finish_time_group.add_argument("--finish-time-secs", type=float, help="Time (secs) to finish at.")
     finish_time_group.add_argument("--finish-frame", type=int, help="Frame number to finish at.")
     finish_time_group.add_argument("--finish-playtime", type=str, help="Playback time HH:MM:SS to finish at.")
-    parser.add_argument("--frame-skip", type=int, default=None,
+    video_player_args.add_argument("--frame-skip", type=int, default=None,
                         help="Number of frames to skip in video player.")
 
     # Preprocessing
-    parser.add_argument("-c", "--calibration", type=Path, default=None,
-                        help="Path to calibration file, overrides --intrinsic and --distortion.")
+    preprocessing_args = parser.add_argument_group("Preprocessing Params")
+    preprocessing_args.add_argument("-c", "--calibration", type=Path, default=None,
+                        help="Path to calibration file to apply undistortion.")
 
     # Stabilization Arguments
-    stabilization_group = parser.add_argument_group(title="Stabilization")
+    stabilization_group = parser.add_argument_group(title="Stabilization Params")
     stabilization_group.add_argument("--orientation-path", type=Path, default=None,
                         help="Path to .csv file containing timestamped orientation measurements that transform world"
                              " to the camera frame.")
     stabilization_group.add_argument("--orientation-time-offset", type=float, default=None,
                                      help="Timestamp (secs) referenced to timestamp in orientation file where"
                                           "video starts (00:00:00).")
+
     # Feature Extraction
-    parser.add_argument("--feature-types", type=str, nargs="+",
+    feature_extraction_args = parser.add_argument_group("Feature Extraction Params")
+    feature_extraction_args.add_argument("--feature-types", type=str, nargs="+",
                         choices=["ORB", "SIFT", "SURF", "BRISK", "KAZE", "AKAZE", "ALL"],
                         default=("ORB",), help="Set of features to use in registration.")
-    parser.add_argument("--bovw-clusters", type=int, default=500, help="Number of bovw clusters to use in global feature descriptor.")
-    parser.add_argument("--bovw-batchsize", type=int, default=1000, help="Batch size for bovw clustering.")
-    parser.add_argument("--nn-top-k", type=int, default=5, help="Number of nearest neighbors to search for in global feature matching.")
+    feature_extraction_args.add_argument("--bovw-clusters", type=int, default=500, help="Number of bovw clusters to use in global feature descriptor.")
+    feature_extraction_args.add_argument("--bovw-batchsize", type=int, default=1000, help="Batch size for bovw clustering.")
+    feature_extraction_args.add_argument("--nn-top-k", type=int, default=5, help="Number of nearest neighbors to search for in global feature matching.")
 
     # Registration
-    parser.add_argument("--min-matches", type=int, default=10,
+    registration_args = parser.add_argument_group("Registration Params")
+    registration_args.add_argument("--min-matches", type=int, default=10,
                         help="Minimum number of matches to proceed with registration.")
-    parser.add_argument("--min-features", type=int, default=100,
+    registration_args.add_argument("--min-features", type=int, default=100,
                         help="Minimum number of features to detect in an image.")
-    parser.add_argument("--homography-type", type=str, choices=["partial", "affine", "perspective"],
+    registration_args.add_argument("--homography-type", type=str, choices=["partial", "affine", "perspective"],
                         default="partial", help="Type of 2D homography estimation to perform.")
-    parser.add_argument("--epsilon", type=float, default=1e-3, help="Homography determinant must be greater than this value to be considered valid.")
+    registration_args.add_argument("--epsilon", type=float, default=1e-3, help="Homography determinant must be greater than this value to be considered valid.")
+
     # Mosaicking
-    parser.add_argument("--min-sequence-length", type=int, default=None, help="Minimum length of sequence to mosaic.")
-    parser.add_argument("--tile-size", type=int, default=1024,
+    mosaicking_args = parser.add_argument_group("Mosaic Params")
+    mosaicking_args.add_argument("--min-sequence-length", type=int, default=None, help="Minimum length of sequence to mosaic.")
+    mosaicking_args.add_argument("--tile-size", type=int, default=1024,
                         help="Largest allowable size (width or height) for mosaic tile. Creates a new tile if it gets bigger.")
-    parser.add_argument("--alpha", type=float, default=1.0,
+    mosaicking_args.add_argument("--alpha", type=float, default=1.0,
                         help="Alpha blending scalar for merging new frames into mosaic. Default behaviour is to preserve existing canvas and append only new area.")
-    parser.add_argument("--keypoint-roi", action="store_true",
+    mosaicking_args.add_argument("--keypoint-roi", action="store_true",
                         help="Only allow the convex hull of the inlier keypoints to be used in mosaic.")
     return parser.parse_args()
 
