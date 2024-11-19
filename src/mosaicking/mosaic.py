@@ -456,13 +456,10 @@ class SequentialMosaic(Mosaic):
                         kp.append(features[feature_type]['keypoints'][match.queryIdx])
                 kp_prev = cv2.KeyPoint.convert(kp_prev)
                 kp = cv2.KeyPoint.convert(kp)
-                #H, inliers = cv2.findHomography(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
-                #H, inliers = cv2.estimateAffine2D(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
-                H, inliers = cv2.estimateAffinePartial2D(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
-                H = np.concatenate((H, np.array([[0, 0, 1]], dtype=float)), axis=0)
+                H, inliers = self._homography_estimator(kp, kp_prev, method=cv2.RANSAC, ransacReprojThreshold=1.0)
                 reproj_error = registration.compute_reprojection_error(H, kp, kp_prev)
                 frac_inliers = inliers.sum() / inliers.size
-                self.logger.debug(f"Registration result {node_prev.identifier} - {node.identifier} error {reproj_error:.2f}, inlier % {frac_inliers * 100:.2f}")
+                self.logger.debug(f"Registration result {self._get_frame_number(node_prev)} - {self._get_frame_number(node)} error {reproj_error:.2f}, inlier % {frac_inliers * 100:.2f}")
                 # If H isn't good, then remove the edge.
                 if not find_nice_homographies(H, self._epsilon) or H is None:
                     to_filter.append((node_prev, node))
