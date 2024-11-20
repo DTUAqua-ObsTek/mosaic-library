@@ -20,7 +20,7 @@ For implementing mosaic-library with your own OpenCV build: ``pip install mosaic
 
 For a pre-baked OpenCV backend: ``pip install mosaic-library[opencv]``
 
-If you want a supported OpenCV build, you can build one of the docker stages available on `the repository <https://github.com/DTUAqua-ObsTek/mosaic-library/tree/devel/docker/>`__.
+If you want a supported OpenCV build, you can build one of the docker stages available on `the repository <https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/docker/>`__.
 Three versions of the opencv build are currently available.
 
 1. OpenCV CUDA
@@ -32,7 +32,7 @@ See the building with docker guide for further information.
 CLI Usage Examples
 ------------------
 
-The examples here use data available on `the repository <https://github.com/DTUAqua-ObsTek/mosaic-library/tree/devel/data/>`__.
+The examples here use data available on `the repository <https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/data/>`__.
 
 A simple sequential model can be applied via ``mosaicking-mosaic``:
 
@@ -50,7 +50,7 @@ Program Integration Examples
 ----------------------------
 
 Apart from the API, we have some examples providing implementations of some or all features of mosaic-library.
-You can find the examples `here <https://github.com/DTUAqua-ObsTek/mosaic-library/tree/devel/examples>`__,
+You can find the examples `here <https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/examples>`__,
 
 
 Primers and Exercises
@@ -71,7 +71,7 @@ has been exposed in ``mosaicking.preprocessing.enhance_detail``
 
 Several of the functions available in mosaicking.preprocessing have been
 implemented in
-`preprocessing-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/devel/examples/preprocessing-playground.py>`__.
+`preprocessing-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/main/examples/preprocessing-playground.py>`__.
 Simply run
 ``python3 preprocessing-playground.py path/to/your/image.jpg``
 to get started.
@@ -104,7 +104,7 @@ in perspective. If we have some idea of where the camera is relative to the
 image, then we can warp the image by rotating it about the approximate
 camera position.
 
-The `perspective-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/devel/perspective-playground.py>`__
+The `perspective-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/main/perspective-playground.py>`__
 example investigates and applies extrinsic and intrinsic transformations
 to the image. See if you can make the train tracks appear parallel. Run
 the program with
@@ -140,7 +140,7 @@ Registration involves three major steps:
    parameters that sufficiently explain the transformation of matched
    features in one image to the matched features in the second.
 
-`registration-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/devel/registration-playground.py>`__
+`registration-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/main/registration-playground.py>`__
 performs these steps using functions defined in
 `mosaicking.registration <mosaicking/registration.py>`__. Run the
 program like so

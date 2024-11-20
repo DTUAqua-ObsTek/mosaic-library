@@ -1,7 +1,5 @@
 # mosaic-library #
 
-`pip install mosaic-library`
-
 This is a python library for manipulating images for underwater mosaicking applications. Currently, this libary is 
 capable of:
 
@@ -12,13 +10,18 @@ capable of:
 5. Camera rotation compensation from orientation data (e.g. IMU).
 6. Sequential mosaicking map generation, with minimal memory management support (database + tiling).
 
-See examples folder for demonstrations of the mosaic module.
+The [mosaic-library](https://pypi.org/project/mosaic-library/) covers these two use-cases: 
 
-## Version 2.0.0 pre-release is here!
+1. Basic implementation (you need an opencv-contrib backend): `pip install mosaic-library[opencv]`
+2. Custom implementation (you have your own opencv-contrib build): `pip install mosaic-library`
 
-Checkout out v2.0.0.dev0 for the most recent pre-release tag.
+See the [examples](https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/examples) folder for demonstrations of the mosaic module.
 
-### Pre-release Notes
+## Version 2.0.0 release candidate is here!
+
+Checkout out v2.0.0.rc0 for the most recent pre-release tag.
+
+### Release Notes
 1. Classes for the __mosaicking.mosaic__ module. Now you can implement your own classes for mosaicking operations. See __mosaicking.mosaic.Mosaic__ and __mosaicking.mosaic.SequentialMosaic__ for templates.
 2. Classes for feature extraction: Use the __mosaicking.registration.FeatureDetector__ class for implementing your own feature detectors.
 3. Classes for preprocessing operations: Use the __mosaicking.preprocessing.Preprocessor__ class for implementing your own preprocessing methods.
@@ -29,9 +32,10 @@ Checkout out v2.0.0.dev0 for the most recent pre-release tag.
 7. Use of __networkx__: mosaics can be represented as transformational relationships between images, we use [networkx](https://networkx.org/) to represent those relationships through node (local and global image features) and edge attributes (matches and homography transformations).
 8. Use of __scikit-learn__: extraction of global image features through Visual Bag of Words is supported through __sklearn__'s k-means clustering.
 9. Better handling of poor feature matching / homography estimation (see __mosaicking.mosaic.SequentialMosaic__).
+10. Basic sphinx documentation hosted on github pages.
 
 ## Roadmap ##
 
 1. Implementation of homography graph optimization strategies (loop closure + GTSAM / g2o) 
-2. Composite data sources: merge multiple data sources into one mosaic.
+2. Composite data sources: merge multiple image data sources into one mosaic.
 3. Integration of additional navigation data sources (USBL, DVL).
