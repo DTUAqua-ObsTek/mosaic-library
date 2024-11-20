@@ -104,7 +104,7 @@ in perspective. If we have some idea of where the camera is relative to the
 image, then we can warp the image by rotating it about the approximate
 camera position.
 
-The `perspective-playground.py <examples/perspective-playground.py>`__
+The `perspective-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/devel/perspective-playground.py>`__
 example investigates and applies extrinsic and intrinsic transformations
 to the image. See if you can make the train tracks appear parallel. Run
 the program with
@@ -113,11 +113,9 @@ exit, press ESC or close the window.
 
 Some questions:
 
-**Why do the rails appear to vanish to a single point in the original
-image?**
+**Why do the rails appear to vanish to a single point in the original image?**
 
-**What are we doing with the camera when we shift the perspective like
-this?**
+**What are we doing with the camera when we shift the perspective like this?**
 
 **What is lost when we adjust the camera to make the rails parallel?**
 
@@ -142,7 +140,7 @@ Registration involves three major steps:
    parameters that sufficiently explain the transformation of matched
    features in one image to the matched features in the second.
 
-`registration-playground.py <../../examples/registration-playground.py>`__
+`registration-playground.py <https://github.com/DTUAqua-ObsTek/mosaic-library/blob/devel/registration-playground.py>`__
 performs these steps using functions defined in
 `mosaicking.registration <mosaicking/registration.py>`__. Run the
 program like so
@@ -210,11 +208,9 @@ Activities
 
 Some questions:
 
-**Do any parts of the mosaic appear poorer in quality than others? If
-so, why?**
+**Do any parts of the mosaic appear poorer in quality than others? If so, why?**
 
-**What happens when the camera passes over something that is not
-co-planar and quite large (for examples, a large boulder)?**
+**What happens when the camera passes over something that is not co-planar and quite large (for examples, a large boulder)?**
 
 **What happens when a fish or other moving objects comes into view?**
 
