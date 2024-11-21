@@ -19,7 +19,7 @@ See the [examples](https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/ex
 
 ## Version 2.0.0 release candidate
 
-Checkout out v2.0.0.rc0 for the most recent pre-release tag.
+Checkout out v2.0.0-rc2 for the most recent pre-release tag.
 
 ### Release Notes
 1. Classes for the __mosaicking.mosaic__ module. Now you can implement your own classes for mosaicking operations. See __mosaicking.mosaic.Mosaic__ and __mosaicking.mosaic.SequentialMosaic__ for templates.
