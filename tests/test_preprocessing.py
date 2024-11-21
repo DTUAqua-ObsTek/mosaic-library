@@ -3,12 +3,55 @@ import unittest
 import cv2
 import numpy as np
 from mosaicking import preprocessing
+from numpy.testing import assert_array_equal
 
 
 class TestPreprocessingModule(unittest.TestCase):
     def setUp(self):
         self.img = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
+        self._bup = self.img.copy()
         self.gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
+
+    def test_scaling_pipeline_cls(self):
+        args = [{"scaling": 0.5}, {"scaling": 0.1}, {"scaling": 5.0}]
+        objs = [preprocessing.ConstARScaling(**arg) for arg in args]
+        p = preprocessing.Pipeline(objs)
+        scaled_img = p.apply(self.img)
+        self.assertRaises(AssertionError, assert_array_equal, scaled_img, self.img)
+
+    def test_clahe_pipeline_cls(self):
+        args = [{"clipLimit": 20.0, "tileGridSize": (3, 3)}, {"clipLimit": 100.0, "tileGridSize": (8, 8)}]
+        objs = [preprocessing.ColorCLAHE(**arg) for arg in args]
+        p = preprocessing.Pipeline(objs)
+        scaled_img = p.apply(self.img)
+        self.assertRaises(AssertionError, assert_array_equal, scaled_img, self.img)
+        self.assertEqual(scaled_img.shape, (100, 100, 3))
+
+    def test_big_pipe_cls(self):
+        args = [{"K": np.array([[0.5, 0.0, 50.0], [0.0, 0.5, 50.0], [0.0, 0.0, 1.0]]),
+                 "D": np.array([-1e-16, 1e-16, 5e-16, -1e-16]),
+                 "inverse": False},
+                {"clipLimit": 20.0, "tileGridSize": (3, 3)},
+                {"clipLimit": 100.0, "tileGridSize": (8, 8)},
+                {"K": np.array([[0.5, 0.0, 50.0], [0.0, 0.5, 50.0], [0.0, 0.0, 1.0]]),
+                 "D": np.array([-1e-2, 1e-3, 5e-4, -1e-4]),
+                 "inverse": True},
+                {"scaling": 0.5}
+                ]
+        clss = [preprocessing.DistortionMapper, preprocessing.ColorCLAHE, preprocessing.ColorCLAHE,
+                preprocessing.DistortionMapper, preprocessing.ConstARScaling]
+        objs = [c(**arg) for c, arg in zip(clss, args)]
+        p = preprocessing.Pipeline(objs)
+        output_img = p.apply(self.img)
+        self.assertEqual(output_img.shape, (50, 50, 3))
+
+    def test_const_ar_scaling_cls(self):
+        scaled_img = preprocessing.ConstARScaling(0.5).apply(self.img)
+        self.assertEqual(scaled_img.shape, (50, 50, 3))
+
+    def test_const_ar_scaling_gray_cls(self):
+        scaled_img = preprocessing.ConstARScaling(0.5).apply(self.gray)
+        self.assertEqual(scaled_img.shape, (50, 50))
 
     def test_const_ar_scale(self):
         scaled_img = preprocessing.const_ar_scale(self.img, 0.5)

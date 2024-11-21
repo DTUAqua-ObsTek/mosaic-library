@@ -1,0 +1,76 @@
+mosaicking-mosaic -h
+usage: mosaicking-mosaic [-h] [--overwrite] [--force-cpu] [--force-cuda-off] [--force-cudacodec-off]
+                         [--start-time-secs START | --start-frame START | --start-playtime START]
+                         [--finish-time-secs FINISH_TIME_SECS | --finish-frame FINISH_FRAME | --finish-playtime FINISH_PLAYTIME]
+                         [--frame-skip FRAME_SKIP] [-c CALIBRATION] [--orientation-path ORIENTATION_PATH]
+                         [--orientation-time-offset ORIENTATION_TIME_OFFSET]
+                         [--feature-types {ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL} [{ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL} ...]]
+                         [--bovw-clusters BOVW_CLUSTERS] [--bovw-batchsize BOVW_BATCHSIZE] [--nn-top-k NN_TOP_K]
+                         [--min-matches MIN_MATCHES] [--min-features MIN_FEATURES] [--homography-type {partial,affine,perspective}]
+                         [--epsilon EPSILON] [--min-sequence-length MIN_SEQUENCE_LENGTH] [--tile-size TILE_SIZE] [--alpha ALPHA]
+                         [--keypoint-roi]
+                         video project
+
+positional arguments:
+  video                 Path to video file.
+  project               Path to directory where output mosaics are to be saved.
+
+options:
+  -h, --help            show this help message and exit
+  --overwrite           Overwrite existing database entries.
+  --force-cpu           Disable GPU operations.
+  --force-cuda-off      Disable CUDA operations.
+  --force-cudacodec-off
+                        Disable CUDA codec operations.
+
+Video Player Params:
+  --start-time-secs START
+                        Time (secs) to start from.
+  --start-frame START   Frame number to start from.
+  --start-playtime START
+                        Playback time HH:MM:SS to start from.
+  --finish-time-secs FINISH_TIME_SECS
+                        Time (secs) to finish at.
+  --finish-frame FINISH_FRAME
+                        Frame number to finish at.
+  --finish-playtime FINISH_PLAYTIME
+                        Playback time HH:MM:SS to finish at.
+  --frame-skip FRAME_SKIP
+                        Number of frames to skip in video player.
+
+Preprocessing Params:
+  -c CALIBRATION, --calibration CALIBRATION
+                        Path to calibration file, overrides --intrinsic and --distortion.
+
+Stabilization Params:
+  --orientation-path ORIENTATION_PATH
+                        Path to .csv file containing timestamped orientation measurements that transform world to the camera frame.
+  --orientation-time-offset ORIENTATION_TIME_OFFSET
+                        Timestamp (secs) referenced to timestamp in orientation file wherevideo starts (00:00:00).
+
+Feature Extraction Params:
+  --feature-types {ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL} [{ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL} ...]
+                        Set of features to use in registration.
+  --bovw-clusters BOVW_CLUSTERS
+                        Number of bovw clusters to use in global feature descriptor.
+  --bovw-batchsize BOVW_BATCHSIZE
+                        Batch size for bovw clustering.
+  --nn-top-k NN_TOP_K   Number of nearest neighbors to search for in global feature matching.
+
+Registration Params:
+  --min-matches MIN_MATCHES
+                        Minimum number of matches to proceed with registration.
+  --min-features MIN_FEATURES
+                        Minimum number of features to detect in an image.
+  --homography-type {partial,affine,perspective}
+                        Type of 2D homography estimation to perform.
+  --epsilon EPSILON     Homography determinant must be greater than this value to be considered valid.
+
+Mosaic Params:
+  --min-sequence-length MIN_SEQUENCE_LENGTH
+                        Minimum length of sequence to mosaic.
+  --tile-size TILE_SIZE
+                        Largest allowable size (width or height) for mosaic tile. Creates a new tile if it gets bigger.
+  --alpha ALPHA         Alpha blending scalar for merging new frames into mosaic. Default behaviour is to preserve existing canvas
+                        and append only new area.
+  --keypoint-roi        Only allow the convex hull of the inlier keypoints to be used in mosaic.

@@ -1,20 +1,59 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
+
 [project]
 name = "mosaic-library"
-version = "1.0.2"
+dynamic = ["version"]
 authors = [
   { name="Fletcher Thompson", email="fletho@dtu.dk" },
 ]
 description = "A python library for manipulating images for underwater mosaicking applications."
 readme = "README.MD"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    "networkx",
+    "pandas",
+    "pyyaml",
+    "scikit-learn",
+    "scipy",
+    "shapely"
+]
+
+[project.optional-dependencies]
+opencv = ["opencv-contrib-python"]
+
 [project.urls]
-"Homepage" = "https://github.com/DTUAqua-ObsTek/mosaic-library"
-"Bug Tracker" = "https://github.com/DTUAqua-ObsTek/mosaic-library/issues"
+"Homepage" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library"
+"Bug Tracker" = "https://gitlab.gbar.dtu.dk/dtu-aqua-observation-technology/camera/mosaic-library/-/issues"
+"Github" = "https://github.com/DTUAqua-ObsTek/mosaic-library"
+"Bug Tracker Github" = "https://github.com/DTUAqua-ObsTek/mosaic-library/issues"
+
+[project.scripts]
+mosaicking-mosaic = "mosaicking.mosaic:main"
+mosaicking-calibration = "mosaicking.calibration:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"mosaicking" = ["resources/schema.sql"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mosaicking"]
+namespaces = false
+
+[tool.setuptools_scm]
+# Optional: custom version scheme
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
+# Optional: write the version to a file
+write_to = "src/mosaicking/_version.py"
