@@ -1,0 +1,426 @@
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>Getting Started &#8212; mosaic-library v2.0.0 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="mosaicking package" href="mosaicking.html" />
+    <link rel="prev" title="mosaic-library documentation" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="getting-started">
+<h1>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="installation-for-cli-usage">
+<h2>Installation for CLI Usage<a class="headerlink" href="#installation-for-cli-usage" title="Permalink to this headline">¶</a></h2>
+<p>Install mosaic-library via <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">mosaic-library[opencv]</span></code>.</p>
+<p>Run <code class="docutils literal notranslate"><span class="pre">mosaicking-mosaic</span> <span class="pre">-h</span></code> or <code class="docutils literal notranslate"><span class="pre">mosaicking-calibration</span> <span class="pre">-h</span></code> for supported CLI scripts.</p>
+</div>
+<div class="section" id="installation-for-developers-integrators">
+<h2>Installation for Developers / Integrators<a class="headerlink" href="#installation-for-developers-integrators" title="Permalink to this headline">¶</a></h2>
+<p>We recommend using an Integrated Development Environment, such as <a class="reference external" href="https://www.jetbrains.com/pycharm/download">PyCharm
+Community</a> or <a class="reference external" href="https://code.visualstudio.com/">Visual Studio Code</a>. See <a class="reference external" href="https://www.jetbrains.com/help/pycharm/creating-empty-project.html">this
+tutorial</a>
+for setting up a PyCharm project.</p>
+<p>For implementing mosaic-library with your own OpenCV build: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">mosaic-library</span></code></p>
+<p>For a pre-baked OpenCV backend: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">mosaic-library[opencv]</span></code></p>
+<p>If you want a supported OpenCV build, you can build one of the docker stages available on <a class="reference external" href="https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/docker/">the repository</a>.
+Three versions of the opencv build are currently available.</p>
+<ol class="arabic simple">
+<li><p>OpenCV CUDA</p></li>
+<li><p>OpenCV CUDA + CUDACODEC</p></li>
+<li><p>OpenCV CUDA + CUDACODEC + NONFREE</p></li>
+</ol>
+<p>See the building with docker guide for further information.</p>
+</div>
+</div>
+<div class="section" id="cli-usage-examples">
+<h1>CLI Usage Examples<a class="headerlink" href="#cli-usage-examples" title="Permalink to this headline">¶</a></h1>
+<p>The examples here use data available on <a class="reference external" href="https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/data/">the repository</a>.</p>
+<p>A simple sequential model can be applied via <code class="docutils literal notranslate"><span class="pre">mosaicking-mosaic</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Run a basic mosaic on 1 s of test data</span>
+<span class="c1"># output to ./fishes_out folder</span>
+mosaicking-mosaic data/mosaicking/fishes.mp4 fishes_output --finish-frame <span class="m">60</span>
+</pre></div>
+</div>
+<p>To see the full help documentation:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>mosaicking-mosaic -h
+usage: mosaicking-mosaic <span class="o">[</span>-h<span class="o">]</span> <span class="o">[</span>--overwrite<span class="o">]</span> <span class="o">[</span>--force-cpu<span class="o">]</span> <span class="o">[</span>--force-cuda-off<span class="o">]</span> <span class="o">[</span>--force-cudacodec-off<span class="o">]</span>
+                         <span class="o">[</span>--start-time-secs START <span class="p">|</span> --start-frame START <span class="p">|</span> --start-playtime START<span class="o">]</span>
+                         <span class="o">[</span>--finish-time-secs FINISH_TIME_SECS <span class="p">|</span> --finish-frame FINISH_FRAME <span class="p">|</span> --finish-playtime FINISH_PLAYTIME<span class="o">]</span>
+                         <span class="o">[</span>--frame-skip FRAME_SKIP<span class="o">]</span> <span class="o">[</span>-c CALIBRATION<span class="o">]</span> <span class="o">[</span>--orientation-path ORIENTATION_PATH<span class="o">]</span>
+                         <span class="o">[</span>--orientation-time-offset ORIENTATION_TIME_OFFSET<span class="o">]</span>
+                         <span class="o">[</span>--feature-types <span class="o">{</span>ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL<span class="o">}</span> <span class="o">[{</span>ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL<span class="o">}</span> ...<span class="o">]]</span>
+                         <span class="o">[</span>--bovw-clusters BOVW_CLUSTERS<span class="o">]</span> <span class="o">[</span>--bovw-batchsize BOVW_BATCHSIZE<span class="o">]</span> <span class="o">[</span>--nn-top-k NN_TOP_K<span class="o">]</span>
+                         <span class="o">[</span>--min-matches MIN_MATCHES<span class="o">]</span> <span class="o">[</span>--min-features MIN_FEATURES<span class="o">]</span> <span class="o">[</span>--homography-type <span class="o">{</span>partial,affine,perspective<span class="o">}]</span>
+                         <span class="o">[</span>--epsilon EPSILON<span class="o">]</span> <span class="o">[</span>--min-sequence-length MIN_SEQUENCE_LENGTH<span class="o">]</span> <span class="o">[</span>--tile-size TILE_SIZE<span class="o">]</span> <span class="o">[</span>--alpha ALPHA<span class="o">]</span>
+                         <span class="o">[</span>--keypoint-roi<span class="o">]</span>
+                         video project
+
+positional arguments:
+  video                 Path to video file.
+  project               Path to directory where output mosaics are to be saved.
+
+options:
+  -h, --help            show this <span class="nb">help</span> message and <span class="nb">exit</span>
+  --overwrite           Overwrite existing database entries.
+  --force-cpu           Disable GPU operations.
+  --force-cuda-off      Disable CUDA operations.
+  --force-cudacodec-off
+                        Disable CUDA codec operations.
+
+Video Player Params:
+  --start-time-secs START
+                        Time <span class="o">(</span>secs<span class="o">)</span> to start from.
+  --start-frame START   Frame number to start from.
+  --start-playtime START
+                        Playback <span class="nb">time</span> HH:MM:SS to start from.
+  --finish-time-secs FINISH_TIME_SECS
+                        Time <span class="o">(</span>secs<span class="o">)</span> to finish at.
+  --finish-frame FINISH_FRAME
+                        Frame number to finish at.
+  --finish-playtime FINISH_PLAYTIME
+                        Playback <span class="nb">time</span> HH:MM:SS to finish at.
+  --frame-skip FRAME_SKIP
+                        Number of frames to skip in video player.
+
+Preprocessing Params:
+  -c CALIBRATION, --calibration CALIBRATION
+                        Path to calibration file, overrides --intrinsic and --distortion.
+
+Stabilization Params:
+  --orientation-path ORIENTATION_PATH
+                        Path to .csv file containing timestamped orientation measurements that transform world to the camera frame.
+  --orientation-time-offset ORIENTATION_TIME_OFFSET
+                        Timestamp <span class="o">(</span>secs<span class="o">)</span> referenced to timestamp in orientation file wherevideo starts <span class="o">(</span><span class="m">00</span>:00:00<span class="o">)</span>.
+
+Feature Extraction Params:
+  --feature-types <span class="o">{</span>ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL<span class="o">}</span> <span class="o">[{</span>ORB,SIFT,SURF,BRISK,KAZE,AKAZE,ALL<span class="o">}</span> ...<span class="o">]</span>
+                        Set of features to use in registration.
+  --bovw-clusters BOVW_CLUSTERS
+                        Number of bovw clusters to use in global feature descriptor.
+  --bovw-batchsize BOVW_BATCHSIZE
+                        Batch size <span class="k">for</span> bovw clustering.
+  --nn-top-k NN_TOP_K   Number of nearest neighbors to search <span class="k">for</span> in global feature matching.
+
+Registration Params:
+  --min-matches MIN_MATCHES
+                        Minimum number of matches to proceed with registration.
+  --min-features MIN_FEATURES
+                        Minimum number of features to detect in an image.
+  --homography-type <span class="o">{</span>partial,affine,perspective<span class="o">}</span>
+                        Type of 2D homography estimation to perform.
+  --epsilon EPSILON     Homography determinant must be greater than this value to be considered valid.
+
+Mosaic Params:
+  --min-sequence-length MIN_SEQUENCE_LENGTH
+                        Minimum length of sequence to mosaic.
+  --tile-size TILE_SIZE
+                        Largest allowable size <span class="o">(</span>width or height<span class="o">)</span> <span class="k">for</span> mosaic tile. Creates a new tile <span class="k">if</span> it gets bigger.
+  --alpha ALPHA         Alpha blending scalar <span class="k">for</span> merging new frames into mosaic. Default behaviour is to preserve existing canvas
+                        and append only new area.
+  --keypoint-roi        Only allow the convex hull of the inlier keypoints to be used in mosaic.
+</pre></div>
+</div>
+</div>
+<div class="section" id="program-integration-examples">
+<h1>Program Integration Examples<a class="headerlink" href="#program-integration-examples" title="Permalink to this headline">¶</a></h1>
+<p>Apart from the API, we have some examples providing implementations of some or all features of mosaic-library.
+You can find the examples <a class="reference external" href="https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/examples">here</a>,</p>
+</div>
+<div class="section" id="primers-and-exercises">
+<h1>Primers and Exercises<a class="headerlink" href="#primers-and-exercises" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="preprocessing-images">
+<h2>Preprocessing Images<a class="headerlink" href="#preprocessing-images" title="Permalink to this headline">¶</a></h2>
+<p>Images are essentially 3-Dimensional Tensors (Videos are 4-Dimensional),
+and so typical linear algebraic operations (matrix multiplication,
+inversion, <em>etc.</em>) will work on them. Images can appear faded or have
+low-contrast due to underwater effects. Histogramming techniques can
+balance the color intensity between channels (color fixing), balance the
+overall light intensity of the image, or balance the contrast of the
+image. Additionally, a sharpness filter
+<a class="reference external" href="https://docs.opencv.org/4.x/df/dac/group__photo__render.html#ga0de660cb6f371a464a74c7b651415975">cv2.detailEnhance</a>
+has been exposed in <code class="docutils literal notranslate"><span class="pre">mosaicking.preprocessing.enhance_detail</span></code></p>
+<p>Several of the functions available in mosaicking.preprocessing have been
+implemented in
+<a class="reference external" href="https://github.com/DTUAqua-ObsTek/mosaic-library/blob/main/examples/preprocessing-playground.py">preprocessing-playground.py</a>.
+Simply run
+<code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">preprocessing-playground.py</span> <span class="pre">path/to/your/image.jpg</span></code>
+to get started.</p>
+<div class="figure align-default" id="id1">
+<img alt="Result of preprocessing" src="_images/preprocessing-result.png" />
+<p class="caption"><span class="caption-text">Result of preprocessing</span><a class="headerlink" href="#id1" title="Permalink to this image">¶</a></p>
+</div>
+</div>
+<div class="section" id="transforming-images">
+<h2>Transforming Images<a class="headerlink" href="#transforming-images" title="Permalink to this headline">¶</a></h2>
+<p>Applying geometric transformations to images is relatively easy. A
+rotation matrix, R, that specifies the Euler roll, pitch, and yaw angles can
+rotate an image about its optical center in sequence to appear as if
+looked at from an equivalent camera from a different orientation. The
+homography transformation of a calibrated image undergoing pure rotation
+is as follows:</p>
+<div class="math notranslate nohighlight">
+\[H = K \cdot R \cdot K^{-1}\]</div>
+<p>This is useful for projecting an image onto a desired plane (such as a ground
+plane). Additionally, translation transformations can be applied to the
+image. This, in combination with rotation, can align images taken at
+different positions. In both situations it is essential to know the
+intrinsic properties of the camera and lens in order to correct for changes
+in perspective. If we have some idea of where the camera is relative to the
+image, then we can warp the image by rotating it about the approximate
+camera position.</p>
+<p>The <a class="reference external" href="https://github.com/DTUAqua-ObsTek/mosaic-library/blob/main/perspective-playground.py">perspective-playground.py</a>
+example investigates and applies extrinsic and intrinsic transformations
+to the image. See if you can make the train tracks appear parallel. Run
+the program with
+<code class="docutils literal notranslate"><span class="pre">python3</span> <span class="pre">examples/perspective-playground.py</span> <span class="pre">path/to/your/image.jpg</span></code>. To
+exit, press ESC or close the window.</p>
+<p>Some questions:</p>
+<p><strong>Why do the rails appear to vanish to a single point in the original image?</strong></p>
+<p><strong>What are we doing with the camera when we shift the perspective like this?</strong></p>
+<p><strong>What is lost when we adjust the camera to make the rails parallel?</strong></p>
+<div class="figure align-default" id="id2">
+<img alt="Example rail homography" src="_images/rails_parallel.png" />
+<p class="caption"><span class="caption-text">Example rail homography</span><a class="headerlink" href="#id2" title="Permalink to this image">¶</a></p>
+</div>
+</div>
+<div class="section" id="registration">
+<h2>Registration<a class="headerlink" href="#registration" title="Permalink to this headline">¶</a></h2>
+<p>The process of identifying common features in two or more images and
+then estimating transformations to align them is called “registration”.
+Registration involves three major steps:</p>
+<ol class="arabic simple">
+<li><p>Feature detection: use an algorithm (such as ORB or SIFT) to detect
+and compute features in each image.</p></li>
+<li><p>Feature matching: use a matching algorithm to identify features from
+each image that are sufficiently similar to each other.</p></li>
+<li><p>Transformation estimation: use a linear transformation model (such as
+affine or perspective homography), and search through model
+parameters that sufficiently explain the transformation of matched
+features in one image to the matched features in the second.</p></li>
+</ol>
+<p><a class="reference external" href="https://github.com/DTUAqua-ObsTek/mosaic-library/blob/main/registration-playground.py">registration-playground.py</a>
+performs these steps using functions defined in
+<a class="reference external" href="mosaicking/registration.py">mosaicking.registration</a>. Run the
+program like so
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">examples/registration-playground.py</span> <span class="pre">path/to/image1.png</span> <span class="pre">path/to/image2.png</span></code>.</p>
+<p><img alt="Image Pair" src="_images/image_pairs.png" /> <img alt="Matched Features" src="_images/matched_features.png" /> <img alt="Registered Images" src="_images/registered_images.png" /></p>
+</div>
+<div class="section" id="mosaicking">
+<h2>Mosaicking<a class="headerlink" href="#mosaicking" title="Permalink to this headline">¶</a></h2>
+<p>Mosaicking is the process of finding correspondences between images and
+arranging them so that they create a larger image. Videos or sequences
+of images can be used to incrementally expand a mosaic by adding in new
+tiles with each new frame. The images are preprocessed first to increase
+clarity and sharpness (making it easier to find features), then a
+transformation is computed between the existing mosaic and the new image
+that maximises correlation between the matched features. Then
+similarity, affine or perspective transformations (similar to the train
+example) are applied to the image. These steps are iterated over each
+new image, and the mosaic grows.</p>
+<p>The mosaicking script has been exposed as a command (make sure you have
+it added to your path) as well as through the module.</p>
+<p>It is important the camera’s view is mostly occupied by a scene that
+lies on a plane or where the distance of the camera to the scene is much
+greater than the relative distances of the objects in the scene (such as
+satellite imagery and the seabottom). Being too close to a bumpy bottom
+will introduce significant parallax error that will affect the registration
+of the mosaic.</p>
+<p>Control of the camera to keep the ground plane in sight is
+essential as the new image will become smaller and smaller with respect to
+the mosaic as the camera moves “through” or “out of” the mosaic’s image
+plane. This will cause out-of-plane shrinking or growing of the mosaic.
+In this case, you should either carefully select the reference image
+(i.e. the geometric center of the mosaic) to be from a camera whose pose is
+as perpendicular to the ground plane as possible (i.e. the image plane
+and ground plane are parallel).</p>
+<p>Alternatively, if you have an IMU that
+measures the camera frame relative to a ground plane (such as the North-
+East plane within a North-East-Down coordinate system), then you can
+specify the rotation required to align the camera with with this frame.
+This is the equivalent of expressing the inertial frame as a rotation from
+the camera frame. In this case, it doubly important to keep the ground
+plane as completely in-view as possible to reduce excessive perspective
+warping.</p>
+<p>The camera may view something that does not have enough features to
+register a homography transformation to previous images.</p>
+<div class="figure align-default" id="id3">
+<img alt="Mosaicking Result" src="_images/mosaic-output.png" />
+<p class="caption"><span class="caption-text">Mosaicking Result</span><a class="headerlink" href="#id3" title="Permalink to this image">¶</a></p>
+</div>
+<div class="section" id="activities">
+<h3>Activities<a class="headerlink" href="#activities" title="Permalink to this headline">¶</a></h3>
+<ol class="arabic simple">
+<li><p>Create your own video and see how large a mosaic you can create</p></li>
+<li><p>What kind of camera control and survey works best?</p></li>
+<li><p>Apart from color, contrast and lighting transforms, are there any
+geometric transformations that we could apply to get better results?</p></li>
+</ol>
+<p>Some questions:</p>
+<p><strong>Do any parts of the mosaic appear poorer in quality than others? If so, why?</strong></p>
+<p><strong>What happens when the camera passes over something that is not co-planar and quite large (for examples, a large boulder)?</strong></p>
+<p><strong>What happens when a fish or other moving objects comes into view?</strong></p>
+</div>
+</div>
+<div class="section" id="calibration">
+<h2>Calibration<a class="headerlink" href="#calibration" title="Permalink to this headline">¶</a></h2>
+<p>It is useful in image geometry to know certain properties of a camera,
+called the intrinsic properties. These properties are used to model the
+behaviour of projecting 3D points onto a 2D image plane for the camera.
+The model typically used is the “pinhole camera model”. These properties
+are usually represented in the so-called “intrinsic matrix”, <code class="docutils literal notranslate"><span class="pre">K</span></code>. A
+simple form (no skew) for <code class="docutils literal notranslate"><span class="pre">K</span></code> is shown below:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}K = \begin{bmatrix}
+f_x &amp; 0 &amp; c_x \\
+0 &amp; f_y &amp; c_y \\
+0 &amp; 0 &amp; 1
+\end{bmatrix}\end{split}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(f_x\)</span> and <span class="math notranslate nohighlight">\(f_y\)</span> are the focal lengths in the image
+coordinate frame x and y directions respectively, measured in pixels.
+<span class="math notranslate nohighlight">\(c_x\)</span> and <span class="math notranslate nohighlight">\(c_y\)</span> are the principle points in the image
+coordinate frame x and y directions respectively. Since focal lengths of
+cameras are generally reported in mm, the method for converting is as
+follows:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{aligned}
+f_x &amp;= \frac{f\times w}{W} \\
+f_y &amp;= \frac{f\times h}{H}
+\end{aligned}\end{split}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(f\)</span> is the focal length measured in mm, <span class="math notranslate nohighlight">\(w\)</span> is the
+image width in pixels, <span class="math notranslate nohighlight">\(W\)</span> is the sensor width in mm, <span class="math notranslate nohighlight">\(h\)</span> is
+the image height in pixels, and <span class="math notranslate nohighlight">\(H\)</span> is the sensor height in mm.
+Information on a variety of commonly used sensors are available
+<a class="reference external" href="https://en.wikipedia.org/wiki/Image_sensor_format#Table_of_sensor_formats_and_sizes">here</a>.</p>
+<p>Additionally, the effects of the lens can distort the path of light
+making objects that should be straight appear curved. These distortion
+effects can be modelled, and the model parameters are usually referred
+to as “distortion coefficients”, <code class="docutils literal notranslate"><span class="pre">D</span></code>. The number of coefficients
+depends on the model selected.</p>
+<p><code class="docutils literal notranslate"><span class="pre">mosaicking-calibration</span></code> provides an implementation of OpenCV’s
+<a class="reference external" href="https://docs.opencv.org/4.7.0/d9/d0c/group__calib3d.html#ga3207604e4b1a1758aa66acb6ed5aa65d">calibrateCamera</a>.
+To calibrate a camera using this tool, you will need the following:</p>
+<ol class="arabic simple">
+<li><p>A camera calibration checkerboard sheet mounted to a stiff plate (see
+<a class="reference external" href="https://calib.io/pages/camera-calibration-pattern-generator">here</a>)</p></li>
+<li><p>The number of inner corner vertices (i.e. where the corner of a
+black square touches the corner of another black square) of the
+checkerboard (rows and columns)</p></li>
+<li><p>The length of the side of the checkerboard squares in mm.</p></li>
+<li><p>A video recording (about 60 - 90 seconds) taken by your camera of the
+checkerboard sheet at a variety of positions, orientations and
+scales, all interior corners need to be visible for a given video
+frame to have valid calibration data. Full coverage of the camera’s
+field of view is necessary to estimate distortion coefficients
+properly.</p></li>
+</ol>
+<p>Run the calibration tool as follows:
+<code class="docutils literal notranslate"><span class="pre">mosaicking-calibration</span> <span class="pre">--cb_pattern</span> <span class="pre">number_of_cols</span> <span class="pre">number_of_rows</span> <span class="pre">--square_size</span> <span class="pre">side_length_mm</span> <span class="pre">--reduction_fraction</span> <span class="pre">0.25</span> <span class="pre">--model</span> <span class="pre">radtan</span> <span class="pre">path/to/your/calibration/video.mp4</span> <span class="pre">output/calibration/path.json</span></code></p>
+<p>The outputted calibration <code class="docutils literal notranslate"><span class="pre">K</span></code> and <code class="docutils literal notranslate"><span class="pre">D</span></code> matrices will be located in
+the <code class="docutils literal notranslate"><span class="pre">.json</span></code> file.</p>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">mosaic-library</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption"><span class="caption-text">Tutorials:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#cli-usage-examples">CLI Usage Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#program-integration-examples">Program Integration Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#primers-and-exercises">Primers and Exercises</a></li>
+</ul>
+<p class="caption"><span class="caption-text">API Descriptions:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="mosaicking.html">mosaicking package</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mosaicking.core.html">mosaicking.core package</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">mosaic-library documentation</a></li>
+      <li>Next: <a href="mosaicking.html" title="next chapter">mosaicking package</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2024, Fletcher F. Thompson.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 2.4.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/tutorial.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
