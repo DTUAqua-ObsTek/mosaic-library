@@ -3,7 +3,7 @@ stages:
 
 pages:
   stage: deploy
-  image: python:3.12-slim
+  image: python:3.12-alpine
   before_script:
     - apt-get update && apt-get install make --no-install-recommends -y
     - python -m pip install sphinx furo
