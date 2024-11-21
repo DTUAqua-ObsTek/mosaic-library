@@ -17,7 +17,7 @@ The [mosaic-library](https://pypi.org/project/mosaic-library/) covers these two 
 
 See the [examples](https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/examples) folder for demonstrations of the mosaic module.
 
-## Version 2.0.0 release candidate is here!
+## Version 2.0.0 release candidate
 
 Checkout out v2.0.0.rc0 for the most recent pre-release tag.
 
