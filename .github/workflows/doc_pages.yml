@@ -28,12 +28,6 @@ jobs:
           # python -m pip install sphinxcontrib-apidoc
           python -m pip install sphinx-autoapi
 
-      - name: Run sphinx-quickstart
-        run: |
-          mkdir -p docs
-          cd docs
-          sphinx-quickstart --makefile --batchfile --sep -p "mosaic-library" -a "Fletcher Thompson"
-
       - name: make the sphinx docs
         run: |
           make -C docs clean 
