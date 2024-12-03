@@ -17,9 +17,9 @@ The [mosaic-library](https://pypi.org/project/mosaic-library/) covers these two 
 
 See the [examples](https://github.com/DTUAqua-ObsTek/mosaic-library/tree/main/examples) folder for demonstrations of the mosaic module.
 
-## Version 2.0.0 release candidate
+## Version 2.0.0 release
 
-Checkout out v2.0.0-rc2 for the most recent pre-release tag.
+Checkout out v2.0.0 for the most recent release.
 
 ### Release Notes
 1. Classes for the __mosaicking.mosaic__ module. Now you can implement your own classes for mosaicking operations. See __mosaicking.mosaic.Mosaic__ and __mosaicking.mosaic.SequentialMosaic__ for templates.
