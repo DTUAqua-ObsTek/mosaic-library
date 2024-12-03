@@ -1,5 +1,5 @@
 # Exclude the assets directory
-prune assets
+prune docs
 
 # Exclude the data directory
 prune data
@@ -15,3 +15,12 @@ exclude .gitignore
 
 # Exclude the MANIFEST.in file
 exclude MANIFEST.in
+
+# Exclude the .coveragerc file
+exclude .coveragerc
+
+# Exclude github workflows
+prune .github
+
+# Exclude docker
+prune docker
