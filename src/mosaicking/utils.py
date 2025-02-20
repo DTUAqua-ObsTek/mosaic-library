@@ -569,6 +569,7 @@ def load_orientation_slerp(orientation_file: Path, video_time_offset: float = 0.
     # Assuming your DataFrame is named df and the timestamp column is named 'timestamp'
     df = df.sort_values(by='ts', ascending=True)
     df["pt"] = df["ts"] - video_time_offset
+    df = df[~df.duplicated()]
     return Slerp(df['ts'], Rotation.from_quat(df.loc[:, ['qx', 'qy', 'qz', 'qw']]))
 
 def convert_feature_keypoints(features: dict[str, dict[str, Union[Sequence[cv2.KeyPoint], npt.NDArray[np.float32]]]]) -> dict[str, dict[str, Union[Sequence[cv2.KeyPoint], npt.NDArray[np.float32]]]]:
