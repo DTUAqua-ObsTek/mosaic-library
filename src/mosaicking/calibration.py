@@ -3,7 +3,6 @@ import cv2
 import argparse
 from pathlib import Path
 import json
-import sys
 from sklearn.cluster import KMeans
 import logging
 
@@ -12,17 +11,21 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    logging.basicConfig(level=logging.INFO,
+                        format="%(levelname)s:%(filename)s:%(message)s")
     model_flags = {"radtan": None, "ratpoly": cv2.CALIB_RATIONAL_MODEL}
     parser = argparse.ArgumentParser()
     parser.add_argument("video", type=str, help="Path to video file.")
     parser.add_argument("calibration", type=str, help="Path to output json file containing calibration information.")
     parser.add_argument("--cb_pattern", type=int, nargs=2, default=(8, 6), help="Number of vertices (cols rows)")
     parser.add_argument("--square_size", type=float, default=30.0, help="Size of the squares in mm.")
-    parser.add_argument("--reduction_fraction", type=float, default=1.0, help="Portion of samples to keep.")
+    parser.add_argument("--reduction_fraction", type=float, default=None, help="Portion of samples to keep.")
     parser.add_argument("--model", type=str, default="radtan", choices=model_flags.keys(),
                         help="Choose either radial-tangent or rational polynomial models.")
     args = parser.parse_args()
     video_path = Path(args.video).resolve(True)
+    if args.reduction_fraction is not None:
+        assert 0.0 < args.reduction_fraction < 1.0, "Reduction fraction must be in interval 0 < reduction_fraction < 1.0"
 
     reader = cv2.VideoCapture(str(video_path))
     fps = reader.get(cv2.CAP_PROP_FPS)
@@ -56,18 +59,18 @@ def main():
                 corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
                 imgpoints[frame, ...] = corners2
             progress = frame / (nframes - 1)
-            print(f"\rCorner Extraction: [{'=' * int(progress * 50):<50}] {int(progress * 100)}%", end='')
+            logger.info(f"Corner Extraction: [{'=' * int(progress * 50):<50}] {int(progress * 100)}%")
                 # Draw and display the corners
                 #cv2.drawChessboardCorners(img, (cols, rows), corners2, ret)
             #cv2.imshow('img', img)
             #cv2.waitKey(1)
     except Exception as err:
-        print(repr(err), file=sys.stderr)
+        logger.error(repr(err))
         raise err
     finally:
         reader.release()
         #cv2.destroyAllWindows()
-    print(f"\rCorner Extraction: [{'=' * int(1.0 * 50):<50}] {int(1.0 * 100)}% Done!",)
+    logger.info(f"Corner Extraction: [{'=' * int(1.0 * 50):<50}] {int(1.0 * 100)}% Done!",)
     imgpoints = imgpoints[~np.isnan(imgpoints).reshape((nframes, cols*rows*2)).any(axis=1)]
     nsamples = imgpoints.shape[0]
     if args.reduction_fraction is not None and args.reduction_fraction < 1:
