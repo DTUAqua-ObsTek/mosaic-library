@@ -830,7 +830,7 @@ def main():
                            overwrite=args.overwrite,
                            force_cpu=args.force_cpu
                            )
-    if args.overwrite or not args.project.join("mosaic.pkl").exists() or not args.project.join("mosaicking.db").exists():
+    if args.overwrite or not args.project.joinpath("mosaic.pkl").exists() or not args.project.joinpath("mosaicking.db").exists():
         mos.extract_features()
         mos.match_features()
         mos.registration()
