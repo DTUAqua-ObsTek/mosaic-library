@@ -3,7 +3,6 @@ import cv2
 import argparse
 from pathlib import Path
 import json
-import sys
 from sklearn.cluster import KMeans
 import logging
 
@@ -12,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    logging.basicConfig(level=logging.INFO,
+                        format="%(levelname)s:%(filename)s:%(message)s")
     model_flags = {"radtan": None, "ratpoly": cv2.CALIB_RATIONAL_MODEL}
     parser = argparse.ArgumentParser()
     parser.add_argument("video", type=str, help="Path to video file.")
@@ -58,18 +59,18 @@ def main():
                 corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
                 imgpoints[frame, ...] = corners2
             progress = frame / (nframes - 1)
-            print(f"\rCorner Extraction: [{'=' * int(progress * 50):<50}] {int(progress * 100)}%", end='')
+            logger.info(f"Corner Extraction: [{'=' * int(progress * 50):<50}] {int(progress * 100)}%")
                 # Draw and display the corners
                 #cv2.drawChessboardCorners(img, (cols, rows), corners2, ret)
             #cv2.imshow('img', img)
             #cv2.waitKey(1)
     except Exception as err:
-        print(repr(err), file=sys.stderr)
+        logger.error(repr(err))
         raise err
     finally:
         reader.release()
         #cv2.destroyAllWindows()
-    print(f"\rCorner Extraction: [{'=' * int(1.0 * 50):<50}] {int(1.0 * 100)}% Done!",)
+    logger.info(f"Corner Extraction: [{'=' * int(1.0 * 50):<50}] {int(1.0 * 100)}% Done!",)
     imgpoints = imgpoints[~np.isnan(imgpoints).reshape((nframes, cols*rows*2)).any(axis=1)]
     nsamples = imgpoints.shape[0]
     if args.reduction_fraction is not None and args.reduction_fraction < 1:
